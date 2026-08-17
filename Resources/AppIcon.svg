@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="210" y1="140" x2="820" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F5F1E8"/>
+      <stop offset="1" stop-color="#E4E9DF"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="410" y1="330" x2="614" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#526D5B"/>
+      <stop offset="1" stop-color="#30483A"/>
+    </linearGradient>
+    <filter id="shadow" x="20" y="30" width="984" height="984" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="22" stdDeviation="26" flood-color="#39463B" flood-opacity="0.18"/>
+    </filter>
+    <filter id="markShadow" x="300" y="260" width="424" height="530" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="9" stdDeviation="10" flood-color="#203027" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+
+  <rect x="72" y="72" width="880" height="880" rx="206" fill="url(#tile)" filter="url(#shadow)"/>
+  <rect x="388" y="314" width="88" height="396" rx="44" fill="url(#mark)" filter="url(#markShadow)"/>
+  <rect x="548" y="314" width="88" height="396" rx="44" fill="url(#mark)" filter="url(#markShadow)"/>
+</svg>
