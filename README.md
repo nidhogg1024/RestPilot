@@ -17,6 +17,14 @@ RestPilot 通过眼睛休息和站立休息帮你建立更健康的工作节奏�
 - 浅色与深色外观，跟随 macOS 系统强调色
 - 可选开机启动和休息结束提示音
 
+## 安装
+
+从 [GitHub Releases](https://github.com/nidhogg1024/RestPilot/releases/latest) 下载 Universal DMG 或 App ZIP。安装包同时支持 Apple Silicon 与 Intel Mac。
+
+打开 DMG 后将 RestPilot 拖入“应用程序”文件夹；使用 ZIP 时，解压后移动 `RestPilot.app` 即可。
+
+RestPilot 没有 Developer ID 签名和 Apple 公证。首次运行时，请右键点击 RestPilot 并选择“打开”；如果仍被系统拦截，可前往“系统设置 → 隐私与安全性”选择“仍要打开”。
+
 ## 系统要求
 
 - macOS 13 Ventura 或更高版本
@@ -32,7 +40,15 @@ zsh scripts/build-app.sh
 open outputs/RestPilot.app
 ```
 
-构建脚本会在 `outputs/RestPilot.app` 生成本地应用。它不会执行开发者签名、公证或自动更新配置。
+构建脚本会在 `outputs/RestPilot.app` 生成当前 Mac 架构的本地应用，并使用 ad-hoc 签名封装完整资源。该签名仅提供包完整性，不使用 Developer ID，也不会执行 Apple 公证或配置自动更新。
+
+生成 Universal Release 安装包：
+
+```bash
+zsh scripts/package-release.sh v0.2.0
+```
+
+产物包含 DMG、App ZIP 和 `SHA256SUMS.txt`，输出到 `outputs/release/v0.2.0/`。
 
 ## 隐私
 
