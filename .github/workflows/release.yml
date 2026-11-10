@@ -1,0 +1,89 @@
+name: Release
+
+# 推送 v* 标签：测试、打包并发布 GitHub Release。
+# 手动运行：只测试和打包，产物作为 Actions artifact 保留，不发布 Release。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: 打包 Universal 安装包
+    runs-on: macos-15
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 标签触发时用标签名；手动运行时用 Info.plist 里的版本号。
+      # package-release.sh 会校验两者一致，不一致直接失败。
+      - name: 确定版本号
+        id: version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="v$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "打包版本：${version}"
+
+      - name: 显示工具链版本
+        run: |
+          sw_vers
+          swift --version
+
+      - name: 运行测试
+        run: swift test
+
+      - name: 打包
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: zsh scripts/package-release.sh "${VERSION}"
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: RestPilot-${{ steps.version.outputs.version }}
+          path: outputs/release/${{ steps.version.outputs.version }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: 发布 GitHub Release
+    if: github.ref_type == 'tag'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: 下载安装包
+        uses: actions/download-artifact@v4
+        with:
+          name: RestPilot-${{ needs.package.outputs.version }}
+          path: release
+
+      - name: 校验 SHA256
+        working-directory: release
+        run: sha256sum --check SHA256SUMS.txt
+
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.package.outputs.version }}
+        run: |
+          gh release create "${TAG}" release/* \
+            --title "RestPilot ${TAG}" \
+            --generate-notes \
+            --verify-tag

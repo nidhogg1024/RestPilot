@@ -56,6 +56,24 @@ zsh scripts/package-release.sh v0.2.0
 
 产物包含 DMG、App ZIP 和 `SHA256SUMS.txt`，输出到 `outputs/release/v0.2.0/`。
 
+## 持续集成与发布
+
+- **CI**：推送到 `main` 或提交 Pull Request 时，GitHub Actions 会运行测试并构建应用包。
+- **自动发布**：推送 `v*` 标签后，会自动运行测试、打包 Universal 安装包并创建 GitHub Release。
+- **只打包不发布**：在 Actions 页面手动运行 Release 工作流，产物保留为 artifact。
+
+发布新版本的步骤：
+
+1. 修改 `Resources/Info.plist` 里的 `CFBundleShortVersionString` 和 `CFBundleVersion` 并提交。
+2. 打同名标签并推送，例如版本号是 `0.3.0` 时：
+
+```bash
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+标签与 `Info.plist` 版本号不一致时，打包会直接失败。
+
 ## 隐私
 
 RestPilot 不会发起网络请求，不包含分析 SDK，也不收集使用数据。你导入的背景和提示图片只保存在本机。
@@ -66,7 +84,8 @@ RestPilot 不会发起网络请求，不包含分析 SDK，也不收集使用数
 Sources/RestPilot/   应用源码
 Tests/               日程、交互与视觉回归测试
 Resources/           应用图标和内置背景
-scripts/             本地 .app 构建脚本
+scripts/             本地 .app 构建与发布打包脚本
+.github/workflows/    CI 与自动发布工作流
 ```
 
 ## 许可证
