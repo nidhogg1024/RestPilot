@@ -153,7 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ScheduleEngineDelegate
 
     func scheduleEngine(_ engine: ScheduleEngine, didEndBreak outcome: BreakOutcome) {
         logger.info(
-            "break_end outcome=\(outcome.rawValue, privacy: .public) skipped_streak=\(engine.consecutiveSkippedBreaks()) next=\(engine.nextScheduledBreakKind()?.rawValue ?? "none", privacy: .public)"
+            "break_end outcome=\(outcome.rawValue, privacy: .public) rest_debt_s=\(Int(engine.restDebt())) next=\(engine.nextScheduledBreakKind()?.rawValue ?? "none", privacy: .public)"
         )
         overlays.hide()
         if outcome == .completed, settings.playSoundWhenBreakEnds {

@@ -10,14 +10,15 @@ struct MenuPopoverView: View {
     var body: some View {
         let state = engine.viewState(now: now)
         let summary = engine.todaySummary(now: now)
+        let debt = engine.restDebt(now: now)
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 statusRow(state)
                 timerRow(state)
                 progressBar(state)
                 nextBreakRow(state)
-                if hasActivity(summary) {
-                    activitySummaryRow(summary)
+                if hasActivity(summary) || debt > 0 {
+                    activitySummaryRow(summary, debt: debt)
                 }
             }
             .padding(.horizontal, 16)
@@ -96,8 +97,8 @@ struct MenuPopoverView: View {
         .font(.system(size: 12))
     }
 
-    private func activitySummaryRow(_ summary: BreakSummary) -> some View {
-        Text(activitySummaryText(summary))
+    private func activitySummaryRow(_ summary: BreakSummary, debt: TimeInterval) -> some View {
+        Text(activitySummaryText(summary, debt: debt))
             .font(.system(size: 10))
             .foregroundStyle(.tertiary)
             .lineLimit(1)
@@ -108,11 +109,12 @@ struct MenuPopoverView: View {
         summary.completed > 0 || summary.skipped > 0 || summary.snoozed > 0
     }
 
-    private func activitySummaryText(_ summary: BreakSummary) -> String {
+    private func activitySummaryText(_ summary: BreakSummary, debt: TimeInterval) -> String {
         var parts: [String] = []
         if summary.completed > 0 { parts.append("完成 \(summary.completed)") }
         if summary.skipped > 0 { parts.append("跳过 \(summary.skipped)") }
         if summary.snoozed > 0 { parts.append("延后 \(summary.snoozed)") }
+        if debt > 0 { parts.append("欠 \(formattedRestDebt(debt))") }
         return "今日 " + parts.joined(separator: " · ")
     }
 

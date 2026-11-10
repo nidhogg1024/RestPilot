@@ -158,20 +158,20 @@ struct PreferencesView: View {
             planGroup(kind: .eye, enabled: $settings.eyeEnabled)
             planGroup(kind: .stand, enabled: $settings.standEnabled)
             SettingsGroup(
-                title: "跳过管理",
+                title: "休息欠账",
                 state: settings.strengthenSkipReminders ? .active : .inactive
             ) {
                 settingRow(
-                    "连续跳过时加强提醒",
-                    detail: "连续跳过 2 次后强化提示；自动休息始终可以延后",
-                    icon: "bell.badge",
+                    "记录当天欠下的休息",
+                    detail: "跳过的休息时长累计为欠账，遮罩上显示；欠账多时下一次休息适度延长，跳过需等待 10 秒",
+                    icon: "hourglass.bottomhalf.filled",
                     isActive: settings.strengthenSkipReminders
                 ) {
                     Toggle("", isOn: $settings.strengthenSkipReminders)
                         .labelsHidden()
                         .controlSize(.small)
                 }
-                Text("跳过不会被当作完成，也不会打乱眼休与站立休息的正常顺序。")
+                Text("完成或部分完成的休息按实际时长抵扣，离开电脑 15 分钟以上也算休息；欠账隔天清零，自动休息始终可以延后。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

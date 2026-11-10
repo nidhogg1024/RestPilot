@@ -139,14 +139,14 @@ import Testing
     engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
     let firstSkipAt = engine.snapshot.phaseStartedAt.addingTimeInterval(2)
     engine.skipBreak(now: firstSkipAt)
-    #expect(engine.consecutiveSkippedBreaks(now: firstSkipAt) == 1)
+    #expect(engine.restDebt(now: firstSkipAt) == 18)
     #expect(engine.nextScheduledBreakKind() == .eye)
 
     engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
     let secondSkipAt = engine.snapshot.phaseStartedAt.addingTimeInterval(2)
     engine.skipBreak(now: secondSkipAt)
 
-    #expect(engine.consecutiveSkippedBreaks(now: secondSkipAt) == 2)
+    #expect(engine.restDebt(now: secondSkipAt) == 36)
     #expect(engine.nextScheduledBreakKind() == .stand)
     #expect(engine.todaySummary(now: secondSkipAt).skipped == 2)
 
@@ -182,7 +182,7 @@ import Testing
     engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
     #expect(engine.snapshot.scheduledEyeBreaksSinceStand == 1)
     #expect(engine.activeBreakSession()?.allowsSnooze == true)
-    #expect(engine.consecutiveSkippedBreaks(now: engine.snapshot.phaseStartedAt) == 0)
+    #expect(engine.restDebt(now: engine.snapshot.phaseStartedAt) == 0)
     let snoozeAt = engine.snapshot.phaseStartedAt.addingTimeInterval(1)
     engine.snoozeCurrentBreak(minutes: 5, now: snoozeAt)
 
@@ -204,27 +204,212 @@ import Testing
     #expect(engine.nextScheduledBreakKind() == .eye)
 }
 
+/// A skipped 5-minute stand break shown for 90 seconds owes the remaining
+/// 210 seconds; the partial rest is credited automatically.
 @MainActor
-@Test func completedBreakResetsConsecutiveSkipReminder() {
+@Test func partialStandBreakOwesOnlyTheUnshownRemainder() {
     var settings = AppSettings.default
     settings.workMinutes = 1
-    settings.eyeBreakSeconds = 5
+    settings.eyeEnabled = false
+    settings.standBreakMinutes = 5
     let engine = ScheduleEngine(settings: settings, now: Date(timeIntervalSince1970: 6_300))
 
     engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
-    let skippedAt = engine.snapshot.phaseStartedAt.addingTimeInterval(1)
+    #expect(engine.snapshot.phase == .resting(.stand))
+    let skippedAt = engine.snapshot.phaseStartedAt.addingTimeInterval(90)
     engine.skipBreak(now: skippedAt)
-    #expect(engine.consecutiveSkippedBreaks(now: skippedAt) == 1)
+
+    #expect(engine.restDebt(now: skippedAt) == 210)
+}
+
+/// Completing a short eye break pays the debt down by its length instead of
+/// clearing a much larger skipped stand break. Just under five minutes owed
+/// already earns the first 20-second extension, which is paid back too.
+@MainActor
+@Test func completedBreakPaysDebtWithoutClearingIt() {
+    var settings = AppSettings.default
+    settings.workMinutes = 1
+    settings.eyeBreakSeconds = 20
+    settings.standAfterEyeBreaks = 1
+    settings.standBreakMinutes = 5
+    let engine = ScheduleEngine(
+        settings: settings,
+        snapshot: ScheduleSnapshot(
+            phase: .working,
+            phaseStartedAt: Date(timeIntervalSince1970: 6_400),
+            deadline: Date(timeIntervalSince1970: 6_460),
+            phaseDuration: 60,
+            scheduledEyeBreaksSinceStand: 1
+        )
+    )
 
     engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
+    #expect(engine.snapshot.phase == .resting(.stand))
+    let skippedAt = engine.snapshot.phaseStartedAt.addingTimeInterval(2)
+    engine.skipBreak(now: skippedAt)
+    #expect(engine.restDebt(now: skippedAt) == 298)
+
+    engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
+    #expect(engine.snapshot.phase == .resting(.eye))
+    #expect(engine.snapshot.phaseDuration == 40)
     let completedAt = engine.snapshot.deadline.addingTimeInterval(1)
     engine.tick(now: completedAt)
 
-    #expect(engine.consecutiveSkippedBreaks(now: completedAt) == 0)
+    #expect(engine.restDebt(now: completedAt) == 258)
 }
 
 @MainActor
-@Test func snoozePreservesStreakAndNextSkipIncrementsIt() {
+@Test func restTakenWithoutDebtIsNotBanked() {
+    var settings = AppSettings.default
+    settings.workMinutes = 1
+    settings.eyeBreakSeconds = 20
+    let engine = ScheduleEngine(settings: settings, now: Date(timeIntervalSince1970: 6_500))
+
+    engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
+    engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
+    #expect(engine.restDebt(now: engine.snapshot.phaseStartedAt) == 0)
+
+    engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
+    let skippedAt = engine.snapshot.phaseStartedAt.addingTimeInterval(2)
+    engine.skipBreak(now: skippedAt)
+
+    #expect(engine.restDebt(now: skippedAt) == 18)
+}
+
+@MainActor
+@Test func longAwayPeriodPaysDebtButShortOrManualPauseDoesNot() {
+    var settings = AppSettings.default
+    settings.workMinutes = 1
+    settings.eyeEnabled = false
+    settings.standBreakMinutes = 5
+    let engine = ScheduleEngine(settings: settings, now: Date(timeIntervalSince1970: 6_600))
+
+    engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
+    let skippedAt = engine.snapshot.phaseStartedAt.addingTimeInterval(2)
+    engine.skipBreak(now: skippedAt)
+    #expect(engine.restDebt(now: skippedAt) == 298)
+
+    let shortLockAt = skippedAt.addingTimeInterval(10)
+    engine.setPaused(true, reason: .screenLocked, now: shortLockAt)
+    engine.setPaused(false, reason: .screenLocked, now: shortLockAt.addingTimeInterval(5 * 60))
+    #expect(engine.snapshot.awayPeriods.isEmpty)
+    #expect(engine.restDebt(now: shortLockAt.addingTimeInterval(5 * 60)) == 298)
+
+    let manualPauseAt = shortLockAt.addingTimeInterval(6 * 60)
+    engine.setPaused(true, reason: .manual, now: manualPauseAt)
+    engine.setPaused(false, reason: .manual, now: manualPauseAt.addingTimeInterval(20 * 60))
+    #expect(engine.snapshot.awayPeriods.isEmpty)
+
+    let awayAt = manualPauseAt.addingTimeInterval(21 * 60)
+    engine.setPaused(true, reason: .idle, now: awayAt)
+    engine.setPaused(true, reason: .screenLocked, now: awayAt.addingTimeInterval(60))
+    engine.setPaused(false, reason: .idle, now: awayAt.addingTimeInterval(10 * 60))
+    #expect(engine.snapshot.awayStartedAt == awayAt)
+    let backAt = awayAt.addingTimeInterval(16 * 60)
+    engine.setPaused(false, reason: .screenLocked, now: backAt)
+
+    #expect(engine.snapshot.awayPeriods == [AwayPeriod(startedAt: awayAt, endedAt: backAt)])
+    #expect(engine.restDebt(now: backAt) == 0)
+}
+
+@MainActor
+@Test func debtExtendsAutomaticBreaksWithinCapsButNotManualOnes() {
+    var settings = AppSettings.default
+    settings.workMinutes = 1
+    settings.eyeBreakSeconds = 20
+    settings.standAfterEyeBreaks = 1
+    settings.standBreakMinutes = 5
+    let start = Date(timeIntervalSince1970: 7_100)
+    // Two skipped stand breaks earlier today: about ten minutes owed.
+    let skipped = (0..<2).map { index in
+        BreakRecord(
+            id: UUID(),
+            kind: .stand,
+            source: .scheduled,
+            startedAt: start.addingTimeInterval(Double(index) * 600 - 1_300),
+            endedAt: start.addingTimeInterval(Double(index) * 600 - 1_298),
+            plannedDuration: 300,
+            presentedDuration: 2,
+            outcome: .skipped
+        )
+    }
+    let engine = ScheduleEngine(
+        settings: settings,
+        snapshot: ScheduleSnapshot(
+            phase: .working,
+            phaseStartedAt: start,
+            deadline: start.addingTimeInterval(60),
+            phaseDuration: 60,
+            recentBreaks: skipped
+        )
+    )
+    #expect(engine.restDebt(now: start) == 596)
+
+    engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
+    #expect(engine.snapshot.phase == .resting(.eye))
+    #expect(engine.snapshot.phaseDuration == 20 + 20)
+    let session = engine.activeBreakSession(now: engine.snapshot.phaseStartedAt)
+    #expect(session?.restDebt == 596)
+    #expect(session?.extendedBy == 20)
+    #expect(session?.delaysSkip == true)
+    engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
+    #expect(engine.restDebt(now: engine.snapshot.phaseStartedAt) == 556)
+
+    engine.startBreak(.stand, now: engine.snapshot.phaseStartedAt.addingTimeInterval(5))
+    #expect(engine.snapshot.phaseDuration == 300)
+    #expect(engine.activeBreakSession()?.delaysSkip == false)
+}
+
+@MainActor
+@Test func disablingRestDebtRemovesExtensionAndReminder() {
+    var settings = AppSettings.default
+    settings.workMinutes = 1
+    settings.eyeBreakSeconds = 20
+    settings.strengthenSkipReminders = false
+    let start = Date(timeIntervalSince1970: 7_200)
+    let engine = ScheduleEngine(
+        settings: settings,
+        snapshot: ScheduleSnapshot(
+            phase: .working,
+            phaseStartedAt: start,
+            deadline: start.addingTimeInterval(60),
+            phaseDuration: 60,
+            recentBreaks: [BreakRecord(
+                id: UUID(),
+                kind: .stand,
+                source: .scheduled,
+                startedAt: start.addingTimeInterval(-700),
+                endedAt: start.addingTimeInterval(-698),
+                plannedDuration: 300,
+                presentedDuration: 2,
+                outcome: .skipped
+            )]
+        )
+    )
+
+    #expect(engine.restDebt(now: start) == 0)
+    engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
+
+    #expect(engine.snapshot.phaseDuration == 20)
+    #expect(engine.activeBreakSession()?.delaysSkip == false)
+}
+
+@Test func restDebtPolicyStepsAreCapped() {
+    #expect(RestDebtPolicy.extraDuration(for: .eye, debt: 2 * 60) == 0)
+    #expect(RestDebtPolicy.extraDuration(for: .eye, debt: 3 * 60) == 20)
+    #expect(RestDebtPolicy.extraDuration(for: .eye, debt: 45 * 60) == 40)
+    #expect(RestDebtPolicy.extraDuration(for: .stand, debt: 9 * 60) == 0)
+    #expect(RestDebtPolicy.extraDuration(for: .stand, debt: 10 * 60) == 60)
+    #expect(RestDebtPolicy.extraDuration(for: .stand, debt: 60 * 60) == 120)
+    #expect(formattedRestDebt(18) == "18 秒")
+    #expect(formattedRestDebt(59.4) == "59 秒")
+    #expect(formattedRestDebt(59.6) == "1 分钟")
+    #expect(formattedRestDebt(298) == "5 分钟")
+    #expect(formattedRestDebt(23 * 60 + 40) == "24 分钟")
+}
+
+@MainActor
+@Test func snoozeDoesNotChangeDebtAndLaterSkipAddsToIt() {
     var settings = AppSettings.default
     settings.workMinutes = 1
     settings.eyeBreakSeconds = 5
@@ -237,21 +422,21 @@ import Testing
         engine.skipBreak(now: engine.snapshot.phaseStartedAt.addingTimeInterval(1))
     }
     let secondSkipAt = engine.snapshot.phaseStartedAt
-    #expect(engine.consecutiveSkippedBreaks(now: secondSkipAt) == 2)
+    #expect(engine.restDebt(now: secondSkipAt) == 8)
 
     engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
     let snoozedAt = engine.snapshot.phaseStartedAt.addingTimeInterval(1)
     engine.snoozeCurrentBreak(minutes: 5, now: snoozedAt)
-    #expect(engine.consecutiveSkippedBreaks(now: snoozedAt) == 2)
+    #expect(engine.restDebt(now: snoozedAt) == 8)
 
     engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
     let thirdSkipAt = engine.snapshot.phaseStartedAt.addingTimeInterval(1)
     engine.skipBreak(now: thirdSkipAt)
-    #expect(engine.consecutiveSkippedBreaks(now: thirdSkipAt) == 3)
+    #expect(engine.restDebt(now: thirdSkipAt) == 12)
 }
 
 @MainActor
-@Test func consecutiveSkipReminderDoesNotCarryIntoNextDay() {
+@Test func restDebtDoesNotCarryIntoNextDay() {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = TimeZone(secondsFromGMT: 0)!
     var settings = AppSettings.default
@@ -268,11 +453,8 @@ import Testing
     }
     let firstDayCheckAt = engine.snapshot.phaseStartedAt
 
-    #expect(engine.consecutiveSkippedBreaks(
-        now: firstDayCheckAt,
-        calendar: calendar
-    ) == 2)
-    #expect(engine.consecutiveSkippedBreaks(now: secondDay, calendar: calendar) == 0)
+    #expect(engine.restDebt(now: firstDayCheckAt, calendar: calendar) == 8)
+    #expect(engine.restDebt(now: secondDay, calendar: calendar) == 0)
 
     let secondDayEngine = ScheduleEngine(
         settings: settings,
@@ -288,14 +470,11 @@ import Testing
     secondDayEngine.tick(now: secondDayEngine.snapshot.deadline.addingTimeInterval(1))
     let secondDaySkipAt = secondDayEngine.snapshot.phaseStartedAt.addingTimeInterval(1)
     secondDayEngine.skipBreak(now: secondDaySkipAt)
-    #expect(secondDayEngine.consecutiveSkippedBreaks(
-        now: secondDaySkipAt,
-        calendar: calendar
-    ) == 1)
+    #expect(secondDayEngine.restDebt(now: secondDaySkipAt, calendar: calendar) == 4)
 }
 
 @MainActor
-@Test func manualBreakCanOnlyEndAndDoesNotAffectSkipStreak() {
+@Test func manualBreakCanOnlyEndAndItsRestPaysDebt() {
     let start = Date(timeIntervalSince1970: 200_000)
     let engine = ScheduleEngine(settings: .default, now: start)
 
@@ -314,7 +493,27 @@ import Testing
     #expect(engine.snapshot.phase == .working)
     #expect(engine.snapshot.recentBreaks.last?.source == .manual)
     #expect(engine.snapshot.recentBreaks.last?.outcome == .cancelled)
-    #expect(engine.consecutiveSkippedBreaks(now: start.addingTimeInterval(3)) == 0)
+    #expect(engine.restDebt(now: start.addingTimeInterval(3)) == 0)
+}
+
+@MainActor
+@Test func manualRestPaysDownExistingDebt() {
+    var settings = AppSettings.default
+    settings.workMinutes = 1
+    settings.eyeEnabled = false
+    settings.standBreakMinutes = 5
+    let engine = ScheduleEngine(settings: settings, now: Date(timeIntervalSince1970: 210_000))
+
+    engine.tick(now: engine.snapshot.deadline.addingTimeInterval(1))
+    let skippedAt = engine.snapshot.phaseStartedAt.addingTimeInterval(2)
+    engine.skipBreak(now: skippedAt)
+    #expect(engine.restDebt(now: skippedAt) == 298)
+
+    engine.startBreak(.stand, now: skippedAt.addingTimeInterval(60))
+    let endedAt = skippedAt.addingTimeInterval(60 + 100)
+    engine.endManualBreak(now: endedAt)
+
+    #expect(engine.restDebt(now: endedAt) == 198)
 }
 
 @Test func overlayActionLayoutStaysSeparatedOnConnectedDisplays() throws {
@@ -628,6 +827,27 @@ import Testing
     let migrated = try JSONDecoder().decode(ScheduleSnapshot.self, from: legacyData)
 
     #expect(migrated.scheduledEyeBreaksSinceStand == 2)
+}
+
+@Test func snapshotWithoutAwayPeriodsDecodesAndRoundTripsThem() throws {
+    let original = ScheduleSnapshot()
+    let encoded = try JSONEncoder().encode(original)
+    var object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    object.removeValue(forKey: "awayPeriods")
+    object.removeValue(forKey: "awayStartedAt")
+    let legacyData = try JSONSerialization.data(withJSONObject: object)
+    let legacy = try JSONDecoder().decode(ScheduleSnapshot.self, from: legacyData)
+    #expect(legacy.awayPeriods.isEmpty)
+    #expect(legacy.awayStartedAt == nil)
+
+    let away = AwayPeriod(
+        startedAt: Date(timeIntervalSince1970: 300_000),
+        endedAt: Date(timeIntervalSince1970: 301_000)
+    )
+    let withAway = ScheduleSnapshot(awayPeriods: [away], awayStartedAt: Date(timeIntervalSince1970: 302_000))
+    let restored = try JSONDecoder().decode(ScheduleSnapshot.self, from: JSONEncoder().encode(withAway))
+    #expect(restored.awayPeriods == [away])
+    #expect(restored.awayStartedAt == Date(timeIntervalSince1970: 302_000))
 }
 
 @Test func legacyExplicitBackgroundSelectionRemainsFixed() {

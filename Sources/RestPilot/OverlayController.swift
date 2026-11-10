@@ -552,6 +552,7 @@ struct BreakPresentation: View {
     let secondaryTitle: String?
     let secondarySystemImage: String?
     let secondaryAction: (() -> Void)?
+    var enablesEscapeShortcut = true
 
     var body: some View {
         let usesLightText = hasBackgroundImage || settings.overlayStyle == .dimmed
@@ -598,7 +599,8 @@ struct BreakPresentation: View {
                     snoozeAction: snoozeAction,
                     secondaryTitle: secondaryTitle,
                     secondarySystemImage: secondarySystemImage,
-                    secondaryAction: secondaryAction
+                    secondaryAction: secondaryAction,
+                    enablesEscapeShortcut: enablesEscapeShortcut
                 )
             }
         }
@@ -633,19 +635,34 @@ private struct BreakOverlayView: View {
                 snoozeAction: session.allowsSnooze
                     ? { engine.snoozeCurrentBreak(minutes: 5) }
                     : nil,
-                secondaryTitle: secondaryTitle,
-                secondarySystemImage: secondarySystemImage,
-                secondaryAction: secondaryAction
+                secondaryTitle: skipAvailable ? secondaryTitle : nil,
+                secondarySystemImage: skipAvailable ? secondarySystemImage : nil,
+                secondaryAction: skipAvailable ? secondaryAction : nil,
+                enablesEscapeShortcut: !session.delaysSkip
             )
         }
         .ignoresSafeArea()
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now = $0 }
     }
 
+    /// Seconds until the skip button appears. Zero when skipping is immediate.
+    private var skipDelayRemaining: TimeInterval {
+        guard session.delaysSkip else { return 0 }
+        return max(0, RestDebtPolicy.skipDelay - now.timeIntervalSince(session.startedAt))
+    }
+
+    private var skipAvailable: Bool { skipDelayRemaining <= 0 }
+
     private var reminderMessage: String? {
-        guard settings.strengthenSkipReminders,
-              session.consecutiveSkippedBreaks >= 2 else { return nil }
-        return "已连续跳过 \(session.consecutiveSkippedBreaks) 次休息，这次尽量完整休息"
+        guard session.restDebt > 0 else { return nil }
+        var parts = ["今天还欠 \(formattedRestDebt(session.restDebt)) 休息"]
+        if session.extendedBy > 0 {
+            parts.append("这次延长 \(formattedRestDebt(session.extendedBy))")
+        }
+        if !skipAvailable, settings.showSkipButton {
+            parts.append("\(Int(skipDelayRemaining.rounded(.up))) 秒后可跳过")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var secondaryTitle: String? {

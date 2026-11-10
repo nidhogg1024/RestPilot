@@ -85,7 +85,7 @@ final class ScheduleEngine {
         }
     }
 
-    func activeBreakSession() -> BreakSession? {
+    func activeBreakSession(now: Date = Date()) -> BreakSession? {
         guard case .resting(let kind) = snapshot.phase,
               let id = snapshot.currentBreakID else { return nil }
         let fallback = kind == .eye ? "看看远处，让眼睛放松一下" : "站起来活动一下"
@@ -95,7 +95,8 @@ final class ScheduleEngine {
             source: snapshot.currentBreakSource ?? .manual,
             startedAt: snapshot.phaseStartedAt,
             content: currentContent() ?? BreakContent(text: fallback),
-            consecutiveSkippedBreaks: consecutiveSkippedBreaks()
+            restDebt: restDebt(now: now),
+            extendedBy: max(0, snapshot.phaseDuration - settings.duration(for: kind))
         )
     }
 
@@ -118,32 +119,46 @@ final class ScheduleEngine {
         }
     }
 
-    func consecutiveSkippedBreaks(now: Date = Date(), calendar: Calendar = .current) -> Int {
-        var count = 0
-        for record in snapshot.recentBreaks.reversed() {
-            guard calendar.isDate(record.endedAt, inSameDayAs: now) else { break }
-            guard record.source != .manual else { continue }
+    /// Rest owed today, in seconds. Skipping adds the part of the break that
+    /// was not shown; any rest actually taken (a finished or partial break, or
+    /// a long spell away from the Mac) pays it down in order. The balance never
+    /// goes negative, so rest taken with no debt is not banked.
+    func restDebt(now: Date = Date(), calendar: Calendar = .current) -> TimeInterval {
+        guard settings.strengthenSkipReminders else { return 0 }
+        var events: [(at: Date, delta: TimeInterval)] = []
+        for record in snapshot.recentBreaks where calendar.isDate(record.endedAt, inSameDayAs: now) {
             switch record.outcome {
             case .skipped:
-                count += 1
-            case .snoozed, .cancelled:
-                continue
-            case .completed:
-                return count
+                events.append((record.endedAt, record.plannedDuration - record.presentedDuration))
+            case .completed, .cancelled:
+                events.append((record.endedAt, -record.presentedDuration))
+            case .snoozed:
+                // The break comes back after the snooze; that record settles it.
+                break
             }
         }
-        return count
+        for away in snapshot.awayPeriods where calendar.isDate(away.endedAt, inSameDayAs: now) {
+            events.append((away.endedAt, -away.duration))
+        }
+        events.sort { $0.at < $1.at }
+        return events.reduce(into: TimeInterval(0)) { debt, event in
+            debt = max(0, debt + event.delta)
+        }
     }
 
     func setPaused(_ paused: Bool, reason: PauseReason, now: Date = Date()) {
         if paused {
             guard snapshot.pauseReasons.insert(reason).inserted else { return }
             if snapshot.pauseReasons.count == 1 { snapshot.pausedAt = now }
+            if reason != .manual, snapshot.awayStartedAt == nil { snapshot.awayStartedAt = now }
         } else {
             guard snapshot.pauseReasons.remove(reason) != nil else { return }
             if snapshot.pauseReasons.isEmpty, let pausedAt = snapshot.pausedAt {
                 snapshot.deadline = snapshot.deadline.addingTimeInterval(now.timeIntervalSince(pausedAt))
                 snapshot.pausedAt = nil
+            }
+            if snapshot.pauseReasons.allSatisfy({ $0 == .manual }) {
+                recordAwayPeriod(endingAt: now)
             }
         }
         delegate?.scheduleEngineDidChangeState(self)
@@ -177,8 +192,7 @@ final class ScheduleEngine {
         snapshot.phaseStartedAt = now
         snapshot.deadline = now
         snapshot.phaseDuration = 0
-        snapshot.pauseReasons = []
-        snapshot.pausedAt = nil
+        resetPauseState()
         snapshot.currentContentID = nil
         snapshot.currentBreakID = nil
         snapshot.currentBreakSource = nil
@@ -211,8 +225,7 @@ final class ScheduleEngine {
         snapshot.phaseStartedAt = now
         snapshot.deadline = now.addingTimeInterval(duration)
         snapshot.phaseDuration = duration
-        snapshot.pauseReasons = []
-        snapshot.pausedAt = nil
+        resetPauseState()
         snapshot.currentBreakID = nil
         snapshot.currentBreakSource = nil
         snapshot.plannedBreakKind = nil
@@ -255,6 +268,9 @@ final class ScheduleEngine {
         if snapshot.recentBreaks.count > 120 {
             snapshot.recentBreaks = Array(snapshot.recentBreaks.suffix(120))
         }
+        if snapshot.awayPeriods.count > 60 {
+            snapshot.awayPeriods = Array(snapshot.awayPeriods.suffix(60))
+        }
 
         switch snapshot.phase {
         case .working:
@@ -281,13 +297,15 @@ final class ScheduleEngine {
         if source == .scheduled {
             advanceCadence(for: kind)
         }
-        let duration = settings.duration(for: kind)
+        var duration = settings.duration(for: kind)
+        if source != .manual {
+            duration += RestDebtPolicy.extraDuration(for: kind, debt: restDebt(now: now))
+        }
         snapshot.phase = .resting(kind)
         snapshot.phaseStartedAt = now
         snapshot.deadline = now.addingTimeInterval(duration)
         snapshot.phaseDuration = duration
-        snapshot.pauseReasons = []
-        snapshot.pausedAt = nil
+        resetPauseState()
         if source != .snoozed || snapshot.currentContentID == nil {
             snapshot.currentContentID = selectContent(for: kind)?.id
         }
@@ -311,12 +329,31 @@ final class ScheduleEngine {
         snapshot.phaseStartedAt = now
         snapshot.deadline = now.addingTimeInterval(duration)
         snapshot.phaseDuration = duration
-        snapshot.pauseReasons = []
-        snapshot.pausedAt = nil
+        resetPauseState()
         snapshot.currentContentID = nil
         snapshot.currentBreakID = nil
         snapshot.currentBreakSource = nil
         snapshot.plannedBreakKind = chooseNextScheduledBreak()
+    }
+
+    /// Drops any in-progress pause without crediting it: the schedule moved on
+    /// (a break started or ended, or the schedule stopped) while paused.
+    private func resetPauseState() {
+        snapshot.pauseReasons = []
+        snapshot.pausedAt = nil
+        snapshot.awayStartedAt = nil
+    }
+
+    /// Closes the current away span. Only spans long enough to count as real
+    /// rest are kept; shorter ones (a quick lock, a short idle) are dropped.
+    private func recordAwayPeriod(endingAt now: Date) {
+        guard let startedAt = snapshot.awayStartedAt else { return }
+        snapshot.awayStartedAt = nil
+        guard now.timeIntervalSince(startedAt) >= RestDebtPolicy.awayCreditThreshold else { return }
+        snapshot.awayPeriods.append(AwayPeriod(startedAt: startedAt, endedAt: now))
+        if snapshot.awayPeriods.count > 60 {
+            snapshot.awayPeriods.removeFirst(snapshot.awayPeriods.count - 60)
+        }
     }
 
     private func recordCurrentBreak(outcome: BreakOutcome, now: Date) {

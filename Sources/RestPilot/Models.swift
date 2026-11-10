@@ -46,9 +46,63 @@ struct BreakSession: Equatable, Identifiable, Sendable {
     var source: BreakSource
     var startedAt: Date
     var content: BreakContent
-    var consecutiveSkippedBreaks: Int
+    /// Rest owed today before this break started, in seconds. Zero when the
+    /// rest-debt feature is disabled.
+    var restDebt: TimeInterval
+    /// How much longer this break is than the configured duration because of
+    /// outstanding rest debt.
+    var extendedBy: TimeInterval
 
     var allowsSnooze: Bool { source != .manual }
+
+    /// Automatic breaks with a large debt delay the skip button and drop its
+    /// Escape shortcut so dismissing takes a deliberate decision.
+    var delaysSkip: Bool {
+        source != .manual && restDebt >= RestDebtPolicy.frictionThreshold
+    }
+}
+
+/// A span during which the user was away from the Mac (idle, screen locked
+/// or asleep) long enough to count as rest.
+struct AwayPeriod: Codable, Equatable, Sendable {
+    var startedAt: Date
+    var endedAt: Date
+
+    var duration: TimeInterval { max(0, endedAt.timeIntervalSince(startedAt)) }
+}
+
+/// Rules for how skipped rest accumulates into debt and how that debt shapes
+/// the next break. Debt is measured in seconds of rest owed for the current day.
+enum RestDebtPolicy {
+    /// Time away from the Mac that counts as having rested.
+    static let awayCreditThreshold: TimeInterval = 15 * 60
+    /// Debt at or above this makes skipping an automatic break harder.
+    static let frictionThreshold: TimeInterval = 5 * 60
+    /// How long the skip button stays hidden once friction applies.
+    static let skipDelay: TimeInterval = 10
+
+    /// Extra time added to an automatic break. Capped on purpose: longer breaks
+    /// are skipped more often, so debt nudges the length instead of demanding
+    /// the whole amount back at once.
+    static func extraDuration(for kind: BreakKind, debt: TimeInterval) -> TimeInterval {
+        switch kind {
+        case .eye:
+            if debt >= 10 * 60 { return 40 }
+            if debt >= 3 * 60 { return 20 }
+            return 0
+        case .stand:
+            if debt >= 20 * 60 { return 120 }
+            if debt >= 10 * 60 { return 60 }
+            return 0
+        }
+    }
+}
+
+func formattedRestDebt(_ debt: TimeInterval) -> String {
+    let seconds = max(0, Int(debt.rounded()))
+    if seconds < 60 { return "\(seconds) 秒" }
+    let minutes = Int((Double(seconds) / 60).rounded())
+    return "\(minutes) 分钟"
 }
 
 struct BreakSummary: Equatable, Sendable {
@@ -166,7 +220,8 @@ struct AppSettings: Codable, Equatable, Sendable {
     var textScale = 1.0
     var imageScale = 1.0
     var contentOrderRandom = true
-    // Optional storage keeps settings saved by older builds decodable.
+    // Optional storage keeps settings saved by older builds decodable. The key
+    // predates rest debt; it now switches the whole rest-debt feature.
     var strengthenSkipRemindersValue: Bool? = nil
     // Optional storage keeps settings saved by older builds decodable.
     var backgroundModeValue: BackgroundMode? = nil
@@ -271,6 +326,10 @@ struct ScheduleSnapshot: Codable, Equatable, Sendable {
     var currentBreakID: UUID? = nil
     var currentBreakSource: BreakSource? = nil
     var recentBreaks: [BreakRecord] = []
+    var awayPeriods: [AwayPeriod] = []
+    /// When the current away span (idle, locked or asleep) began. Independent
+    /// of `pausedAt`, which also covers manual pauses.
+    var awayStartedAt: Date? = nil
 
     private enum CodingKeys: String, CodingKey {
         case phase
@@ -287,6 +346,8 @@ struct ScheduleSnapshot: Codable, Equatable, Sendable {
         case consecutiveSkippedBreaks
         case recentBreaks
         case completedEyeBreaks
+        case awayPeriods
+        case awayStartedAt
     }
 
     init(
@@ -301,7 +362,9 @@ struct ScheduleSnapshot: Codable, Equatable, Sendable {
         plannedBreakKind: BreakKind? = nil,
         currentBreakID: UUID? = nil,
         currentBreakSource: BreakSource? = nil,
-        recentBreaks: [BreakRecord] = []
+        recentBreaks: [BreakRecord] = [],
+        awayPeriods: [AwayPeriod] = [],
+        awayStartedAt: Date? = nil
     ) {
         self.phase = phase
         self.phaseStartedAt = phaseStartedAt
@@ -315,6 +378,8 @@ struct ScheduleSnapshot: Codable, Equatable, Sendable {
         self.currentBreakID = currentBreakID
         self.currentBreakSource = currentBreakSource
         self.recentBreaks = recentBreaks
+        self.awayPeriods = awayPeriods
+        self.awayStartedAt = awayStartedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -334,10 +399,12 @@ struct ScheduleSnapshot: Codable, Equatable, Sendable {
         plannedBreakKind = try values.decodeIfPresent(BreakKind.self, forKey: .plannedBreakKind)
         currentBreakID = try values.decodeIfPresent(UUID.self, forKey: .currentBreakID)
         currentBreakSource = try values.decodeIfPresent(BreakSource.self, forKey: .currentBreakSource)
-        // Older builds persisted a streak indefinitely. Decode and discard it;
-        // the current streak is derived from dated break records instead.
+        // Older builds persisted a skip streak. Decode and discard it; rest debt
+        // is derived from dated break records and away periods instead.
         _ = try values.decodeIfPresent(Int.self, forKey: .consecutiveSkippedBreaks)
         recentBreaks = try values.decodeIfPresent([BreakRecord].self, forKey: .recentBreaks) ?? []
+        awayPeriods = try values.decodeIfPresent([AwayPeriod].self, forKey: .awayPeriods) ?? []
+        awayStartedAt = try values.decodeIfPresent(Date.self, forKey: .awayStartedAt)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -354,6 +421,8 @@ struct ScheduleSnapshot: Codable, Equatable, Sendable {
         try values.encodeIfPresent(currentBreakID, forKey: .currentBreakID)
         try values.encodeIfPresent(currentBreakSource, forKey: .currentBreakSource)
         try values.encode(recentBreaks, forKey: .recentBreaks)
+        try values.encode(awayPeriods, forKey: .awayPeriods)
+        try values.encodeIfPresent(awayStartedAt, forKey: .awayStartedAt)
     }
 }
 
