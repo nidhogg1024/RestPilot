@@ -116,9 +116,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ScheduleEngineDelegate
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.backgroundColor = RestPilotTheme.canvasNSColor
-            window.setContentSize(NSSize(width: 800, height: 560))
-            window.minSize = NSSize(width: 760, height: 520)
-            window.maxSize = NSSize(width: 940, height: 720)
+            window.setContentSize(SettingsWindowMetrics.defaultSize)
+            window.contentMinSize = NSSize(
+                width: SettingsWindowMetrics.minWidth,
+                height: SettingsWindowMetrics.minHeight
+            )
+            window.contentMaxSize = SettingsWindowMetrics.maxSize
             window.center()
             window.isReleasedWhenClosed = false
             preferencesWindow = window

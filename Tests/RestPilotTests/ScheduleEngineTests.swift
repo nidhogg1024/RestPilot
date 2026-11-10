@@ -694,7 +694,7 @@ import Testing
             .default,
             .plans,
             .light,
-            CGSize(width: 940, height: 720)
+            SettingsWindowMetrics.defaultSize
         ),
         (
             "settings-plans-disabled-dark",
@@ -722,7 +722,7 @@ import Testing
             mixedContent,
             .content,
             .light,
-            CGSize(width: 940, height: 720)
+            SettingsWindowMetrics.defaultSize
         )
     ]
 
@@ -746,6 +746,68 @@ import Testing
             try writePNG(image, to: output)
         }
     }
+}
+
+/// Content wider than the window is centred by SwiftUI, which pushes the
+/// sidebar past the left edge and the page past the right one. At the
+/// narrowest window both edges must show nothing but the window ground.
+@MainActor
+@Test func settingsPagesStayInsideTheNarrowestWindow() throws {
+    var rich = AppSettings.default
+    rich.backgroundMode = .fixed
+    rich.pauseWhenIdle = true
+    rich.eyeContents = [
+        BreakContent(text: "看看二十英尺外的东西，慢慢眨几次眼睛，让睫状肌彻底放松下来再回来"),
+        BreakContent(text: "闭上眼睛，做三次缓慢呼吸", isEnabled: false)
+    ]
+    let size = CGSize(
+        width: SettingsWindowMetrics.minWidth,
+        height: SettingsWindowMetrics.minHeight
+    )
+
+    for section in SettingsSection.allCases {
+        let view = PreferencesView(
+            settings: rich,
+            initialSelection: section,
+            onSave: { _ in },
+            onPreview: { _, _ in }
+        )
+        .environment(\.colorScheme, .light)
+        .frame(width: size.width, height: size.height)
+        let image = try renderAppKitSnapshot(view, size: size)
+        let bitmap = try #require(image.representations.first as? NSBitmapImageRep)
+
+        #expect(
+            edgeStripIsUniform(bitmap, leading: true),
+            "\(section.rawValue) is clipped at the left edge"
+        )
+        #expect(
+            edgeStripIsUniform(bitmap, leading: false),
+            "\(section.rawValue) is clipped at the right edge"
+        )
+    }
+}
+
+/// True when the outermost 4pt column on one side has a single colour.
+private func edgeStripIsUniform(_ bitmap: NSBitmapImageRep, leading: Bool) -> Bool {
+    let scale = max(1, bitmap.pixelsWide / Int(bitmap.size.width))
+    let strip = 4 * scale
+    let columns = leading
+        ? Array(0..<strip)
+        : Array((bitmap.pixelsWide - strip)..<bitmap.pixelsWide)
+    guard let reference = bitmap.colorAt(x: columns[0], y: 0)?.usingColorSpace(.sRGB) else {
+        return false
+    }
+    for y in stride(from: 0, to: bitmap.pixelsHigh, by: 2) {
+        for x in columns {
+            guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { return false }
+            let distance = abs(color.redComponent - reference.redComponent)
+                + abs(color.greenComponent - reference.greenComponent)
+                + abs(color.blueComponent - reference.blueComponent)
+            if distance > 0.03 { return false }
+        }
+    }
+    return true
 }
 
 @MainActor

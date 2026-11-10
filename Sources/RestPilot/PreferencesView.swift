@@ -3,6 +3,17 @@ import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Sizes shared by the settings window and its content. Every page has to
+/// fit `minWidth`; the window must never be narrower than its content.
+enum SettingsWindowMetrics {
+    static let minWidth: CGFloat = 760
+    static let minHeight: CGFloat = 520
+    static let defaultSize = CGSize(width: 800, height: 560)
+    static let maxSize = CGSize(width: 940, height: 720)
+    static let sidebarWidth: CGFloat = 172
+    static let pageMaxWidth: CGFloat = 720
+}
+
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "通用"
     case plans = "休息计划"
@@ -53,12 +64,16 @@ struct PreferencesView: View {
                 .padding(.horizontal, 28)
                 .padding(.top, 8)
                 .padding(.bottom, 32)
-                .frame(maxWidth: selection == .content ? 760 : 680, alignment: .topLeading)
+                .frame(maxWidth: SettingsWindowMetrics.pageMaxWidth, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
+            // A permanent scroll bar would take 15pt from pages that scroll
+            // and none from pages that do not, so cards would change width
+            // from tab to tab.
+            .scrollIndicators(.never)
             .layoutPriority(1)
         }
-        .frame(minWidth: 760, minHeight: 520)
+        .frame(minWidth: SettingsWindowMetrics.minWidth, minHeight: SettingsWindowMetrics.minHeight)
         .background(RestPilotTheme.canvas)
         .toggleStyle(SoftSwitchStyle())
         .controlSize(.small)
@@ -78,7 +93,7 @@ struct PreferencesView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
-        .frame(width: 172)
+        .frame(width: SettingsWindowMetrics.sidebarWidth)
     }
 
     private func sidebarRow(_ section: SettingsSection) -> some View {
@@ -254,7 +269,7 @@ struct PreferencesView: View {
         Button(role: role, action: action) {
             Text(title)
                 .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(role == .destructive ? RestPilotTheme.warning : RestPilotTheme.ink)
+                .foregroundStyle(role == .destructive ? RestPilotTheme.danger : RestPilotTheme.ink)
                 .padding(.horizontal, 13)
                 .frame(height: 28)
                 .background(RestPilotTheme.fill, in: Capsule())
@@ -302,7 +317,7 @@ struct PreferencesView: View {
                         Spacer()
                     }
                 }
-                .frame(minWidth: 300, idealWidth: 340, maxWidth: 360)
+                .frame(minWidth: 250, maxWidth: 340)
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
@@ -315,7 +330,7 @@ struct PreferencesView: View {
                     .padding(.horizontal, 4)
                     InlineBreakPreview(kind: contentKind, content: selectedContent, settings: settings)
                 }
-                .frame(minWidth: 280)
+                .frame(minWidth: 210, maxWidth: .infinity)
             }
         }
         .onChange(of: contentKind) { _ in selectedContentID = nil }
@@ -370,6 +385,9 @@ struct PreferencesView: View {
                 Toggle("启用这条提示", isOn: binding[index].isEnabled).labelsHidden()
                 Menu {
                     Button("复制") { duplicateContent(binding: binding, index: index) }
+                    if item.imagePath != nil {
+                        Button("移除图片") { binding.wrappedValue[index].imagePath = nil }
+                    }
                     Button("删除", role: .destructive) { deleteContent(binding: binding, index: index) }
                 } label: { Image(systemName: "ellipsis") }
                     .menuStyle(.borderlessButton)
@@ -388,9 +406,6 @@ struct PreferencesView: View {
 
             HStack(spacing: 8) {
                 softButton(item.imagePath == nil ? "添加图片" : "更换图片") { chooseImage(binding: binding, index: index) }
-                if item.imagePath != nil {
-                    softButton("移除图片", role: .destructive) { binding.wrappedValue[index].imagePath = nil }
-                }
                 Spacer()
                 softButton("预览此条") {
                     selectedContentID = item.id
@@ -731,8 +746,9 @@ private struct InlineBreakPreview: View {
                 VStack(spacing: 0) {
                     BreakKindChip(title: kind.displayName, usesLightText: usesLightText, scale: 0.85)
                     Text(content.text)
-                        .font(.system(size: 22 * settings.textScale, weight: .semibold))
+                        .font(.system(size: 19 * settings.textScale, weight: .semibold))
                         .multilineTextAlignment(.center)
+                        .lineLimit(2)
                         .shadow(color: .black.opacity(backgroundPath != nil ? 0.28 : 0), radius: 10, y: 2)
                         .padding(.top, 14)
                     if settings.showCountdown {
@@ -746,12 +762,11 @@ private struct InlineBreakPreview: View {
                     }
                     if let path = content.imagePath, let image = NSImage(contentsOfFile: path) {
                         Image(nsImage: image).resizable().scaledToFit()
-                            .frame(maxWidth: 200 * settings.imageScale, maxHeight: 80 * settings.imageScale)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .padding(.top, 14)
+                            .frame(maxWidth: 120 * settings.imageScale, maxHeight: 44 * settings.imageScale)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .padding(.top, 12)
                     }
                 }
-                .padding(.horizontal, 24)
                 .frame(maxWidth: .infinity)
 
                 ViewThatFits(in: .horizontal) {
@@ -760,7 +775,7 @@ private struct InlineBreakPreview: View {
                 }
                 .allowsHitTesting(false)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 16)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 340)

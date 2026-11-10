@@ -39,6 +39,8 @@ enum RestPilotTheme {
 
     static let active = Color(light: rgb(0xE0703A), dark: rgb(0xF08C58))
     static let activeSurface = Color(light: rgb(0xE0703A, alpha: 0.12), dark: rgb(0xF08C58, alpha: 0.18))
+    /// Destructive actions such as removing an image.
+    static let danger = Color(light: rgb(0xC0392B), dark: rgb(0xF0887A))
     static let warning = Color(light: rgb(0xB7791F), dark: rgb(0xE0B15A))
     static let warningSurface = Color(light: rgb(0xB7791F, alpha: 0.12), dark: rgb(0xE0B15A, alpha: 0.16))
 

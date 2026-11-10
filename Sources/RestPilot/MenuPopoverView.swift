@@ -20,7 +20,11 @@ struct MenuPopoverView: View {
                     activitySummaryRow(summary, debt: debt)
                 }
             }
-            quickBreakRow
+            if settings.eyeEnabled || settings.standEnabled {
+                quickBreakRow
+            } else {
+                noPlanHint
+            }
             Spacer(minLength: 0)
             footerRow(state)
         }
@@ -120,6 +124,20 @@ struct MenuPopoverView: View {
                 quickBreakButton("站立休息", systemImage: "figure.walk") { engine.startBreak(.stand) }
             }
         }
+    }
+
+    /// Shown in place of the quick-break buttons when both plans are off.
+    private var noPlanHint: some View {
+        Button(action: openSettings) {
+            Text("还没有启用休息计划，去设置里打开")
+                .font(.system(size: 12))
+                .foregroundStyle(RestPilotTheme.inkSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(RestPilotTheme.fill, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(SoftPressStyle())
     }
 
     private func quickBreakButton(
