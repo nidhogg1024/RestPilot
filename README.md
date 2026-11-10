@@ -42,6 +42,12 @@ open outputs/RestPilot.app
 
 构建脚本会在 `outputs/RestPilot.app` 生成当前 Mac 架构的本地应用，并使用 ad-hoc 签名封装完整资源。该签名仅提供包完整性，不使用 Developer ID，也不会执行 Apple 公证或配置自动更新。
 
+应用图标由 `Resources/AppIconArtwork.png` 渲染而来，修改画稿后重新生成 iconset 与 icns：
+
+```bash
+zsh scripts/build-icon.sh
+```
+
 生成 Universal Release 安装包：
 
 ```bash
