@@ -552,9 +552,9 @@ import Testing
 @MainActor
 @Test func overlayRendersAtConnectedDisplaySizes() throws {
     let displaySizes: [(name: String, size: CGSize)] = [
-        ("built-in", CGSize(width: 1_728, height: 1_117)),
-        ("mi-monitor", CGSize(width: 1_920, height: 1_080)),
-        ("af2712", CGSize(width: 2_048, height: 1_152))
+        ("laptop", CGSize(width: 1_728, height: 1_117)),
+        ("external-1080p", CGSize(width: 1_920, height: 1_080)),
+        ("external-2k", CGSize(width: 2_048, height: 1_152))
     ]
     let outputDirectory = ProcessInfo.processInfo.environment[
         "RESTPILOT_VISUAL_OUTPUT_DIR"
@@ -570,7 +570,7 @@ import Testing
     for display in displaySizes {
         let settings = AppSettings.default
         // One display also shows the rest-debt line so that state is covered.
-        let owesRest = display.name == "built-in"
+        let owesRest = display.name == "laptop"
         let view = ZStack {
             OverlayBackground(settings: settings, backgroundPath: nil)
             BreakPresentation(
