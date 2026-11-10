@@ -521,13 +521,14 @@ import Testing
         let positions = BreakPresentationLayout.positions(
             containerHeight: height,
             contentHeight: 631,
-            actionHeight: 50
+            actionHeight: OverlayActionControlSize.regular.height
         )
         let actionCenter = try #require(positions.actionCenterY)
-        let visibleGap = actionCenter - 25 - (positions.contentCenterY + 315.5)
+        let halfAction = OverlayActionControlSize.regular.height / 2
+        let visibleGap = actionCenter - halfAction - (positions.contentCenterY + 315.5)
 
         #expect(visibleGap >= 64)
-        #expect(actionCenter + 25 <= height - 72)
+        #expect(actionCenter + halfAction <= height - 72)
     }
 }
 
@@ -544,8 +545,8 @@ import Testing
 
     #expect(visibleGap >= 32)
     #expect(OverlayActionControlSize.compact.fontSize == 13)
-    #expect(OverlayActionControlSize.regular.fontSize == 16)
-    #expect(OverlayActionControlSize.regular.height == 50)
+    #expect(OverlayActionControlSize.regular.fontSize == 15)
+    #expect(OverlayActionControlSize.regular.height == 44)
 }
 
 @MainActor
@@ -568,18 +569,20 @@ import Testing
 
     for display in displaySizes {
         let settings = AppSettings.default
+        // One display also shows the rest-debt line so that state is covered.
+        let owesRest = display.name == "built-in"
         let view = ZStack {
             OverlayBackground(settings: settings, backgroundPath: nil)
             BreakPresentation(
                 eyebrow: "眼睛休息",
-                time: "00:20",
+                time: owesRest ? "00:26" : "00:20",
+                progress: owesRest ? 0.65 : 1,
                 content: BreakContent(text: "看看远处，让眼睛放松一下"),
                 settings: settings,
                 hasBackgroundImage: false,
-                reminderMessage: nil,
+                reminderMessage: owesRest ? "今天还欠 23 分钟休息 · 这次延长 20 秒" : nil,
                 snoozeAction: {},
-                secondaryTitle: "跳过这次休息",
-                secondarySystemImage: "forward.end",
+                secondaryTitle: "跳过",
                 secondaryAction: {}
             )
         }
@@ -596,6 +599,47 @@ import Testing
             let output = URL(fileURLWithPath: outputDirectory)
                 .appendingPathComponent("\(display.name).png")
             try writePNG(image, to: output)
+        }
+    }
+
+    // Photo backgrounds switch the whole presentation to light text. Bundle
+    // resources are missing under `swift test`, so read the repo copy.
+    let photo = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("Resources/Backgrounds/lake.jpg")
+    if FileManager.default.fileExists(atPath: photo.path) {
+        var settings = AppSettings.default
+        settings.backgroundMode = .fixed
+        let size = CGSize(width: 1_728, height: 1_117)
+        let view = ZStack {
+            OverlayBackground(settings: settings, backgroundPath: photo.path)
+            BreakPresentation(
+                eyebrow: "站立休息",
+                time: "04:12",
+                progress: 0.84,
+                content: BreakContent(text: "站起来走一走"),
+                settings: settings,
+                hasBackgroundImage: true,
+                reminderMessage: nil,
+                snoozeAction: {},
+                secondaryTitle: "跳过",
+                secondaryAction: {}
+            )
+        }
+        .frame(width: size.width, height: size.height)
+
+        let renderer = ImageRenderer(content: view)
+        renderer.proposedSize = ProposedViewSize(size)
+        let image = try #require(renderer.nsImage)
+        #expect(image.size == size)
+
+        if let outputDirectory {
+            try writePNG(
+                image,
+                to: URL(fileURLWithPath: outputDirectory).appendingPathComponent("photo-background.png")
+            )
         }
     }
 }

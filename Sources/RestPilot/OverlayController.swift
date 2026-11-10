@@ -275,24 +275,35 @@ struct OverlayBackground: View {
         }
     }
 
+    /// Cream paper with faint peach, sage and sky washes. Every tone stays
+    /// very light so the blends never turn muddy.
     private var calmLightBackground: some View {
-        ZStack {
-            Color(red: 0.91, green: 0.92, blue: 0.92)
-            LinearGradient(
-                stops: [
-                    .init(color: Color(red: 0.975, green: 0.969, blue: 0.949), location: 0),
-                    .init(color: Color(red: 0.951, green: 0.951, blue: 0.943), location: 0.52),
-                    .init(color: Color(red: 0.925, green: 0.936, blue: 0.943), location: 1)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+        let wash = 0.55 + settings.overlayOpacity * 0.45
+        return ZStack {
+            Color(red: 0.969, green: 0.953, blue: 0.922)
+            EllipticalGradient(
+                colors: [Color(red: 1.0, green: 0.851, blue: 0.741).opacity(0.95 * wash), Color(red: 1.0, green: 0.851, blue: 0.741).opacity(0)],
+                center: UnitPoint(x: 0.10, y: 0.06),
+                startRadiusFraction: 0,
+                endRadiusFraction: 0.62
             )
-            .opacity(0.70 + settings.overlayOpacity * 0.30)
-            RadialGradient(
-                colors: [Color.white.opacity(0.30), Color.white.opacity(0)],
-                center: UnitPoint(x: 0.36, y: 0.28),
-                startRadius: 20,
-                endRadius: 820
+            EllipticalGradient(
+                colors: [Color(red: 0.843, green: 0.902, blue: 0.812).opacity(0.85 * wash), Color(red: 0.843, green: 0.902, blue: 0.812).opacity(0)],
+                center: UnitPoint(x: 0.94, y: 0.98),
+                startRadiusFraction: 0,
+                endRadiusFraction: 0.60
+            )
+            EllipticalGradient(
+                colors: [Color(red: 0.863, green: 0.898, blue: 0.957).opacity(0.75 * wash), Color(red: 0.863, green: 0.898, blue: 0.957).opacity(0)],
+                center: UnitPoint(x: 0.96, y: 0.02),
+                startRadiusFraction: 0,
+                endRadiusFraction: 0.48
+            )
+            EllipticalGradient(
+                colors: [Color(red: 0.992, green: 0.906, blue: 0.851).opacity(0.70 * wash), Color(red: 0.992, green: 0.906, blue: 0.851).opacity(0)],
+                center: UnitPoint(x: 0.04, y: 1.0),
+                startRadiusFraction: 0,
+                endRadiusFraction: 0.44
             )
         }
     }
@@ -302,64 +313,79 @@ enum OverlayActionControlSize {
     case regular
     case compact
 
-    var fontSize: CGFloat { self == .regular ? 16 : 13 }
-    var symbolSize: CGFloat { self == .regular ? 18 : 14 }
-    var minWidth: CGFloat { self == .regular ? 188 : 136 }
-    var height: CGFloat { self == .regular ? 50 : 38 }
-    var horizontalPadding: CGFloat { self == .regular ? 18 : 12 }
-    var contentSpacing: CGFloat { self == .regular ? 8 : 6 }
-    var actionSpacing: CGFloat { self == .regular ? 16 : 10 }
+    var fontSize: CGFloat { self == .regular ? 15 : 13 }
+    var keycapFontSize: CGFloat { self == .regular ? 11 : 10 }
+    var height: CGFloat { self == .regular ? 44 : 34 }
+    var horizontalPadding: CGFloat { self == .regular ? 20 : 14 }
+    var contentSpacing: CGFloat { self == .regular ? 10 : 7 }
+    var actionSpacing: CGFloat { self == .regular ? 10 : 8 }
 }
 
+/// Pill used at the bottom of the break screen. The raised variant is a white
+/// pill for the gentler choice; the quiet one is bare text so leaving the
+/// break never looks like the main thing to do.
 struct OverlayActionLabel: View {
     let title: String
-    let systemImage: String
     let usesLightText: Bool
-    var emphasized = false
+    var raised = false
+    var keycap: String? = nil
     var controlSize: OverlayActionControlSize = .regular
 
     var body: some View {
         HStack(spacing: controlSize.contentSpacing) {
-            Image(systemName: systemImage)
-                .font(.system(size: controlSize.symbolSize, weight: .semibold))
             Text(title)
-                .font(.system(size: controlSize.fontSize, weight: .semibold))
+                .font(.system(size: controlSize.fontSize, weight: .medium))
+                .lineLimit(1)
+                .fixedSize()
+            if let keycap {
+                Text(keycap)
+                    .font(.system(size: controlSize.keycapFontSize, weight: .medium, design: .rounded))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(keycapFill, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .opacity(0.8)
+            }
         }
         .foregroundStyle(labelColor)
         .padding(.horizontal, controlSize.horizontalPadding)
-        .frame(minWidth: controlSize.minWidth, minHeight: controlSize.height)
+        .frame(height: controlSize.height)
         .background(
-            fillColor,
-            in: Capsule()
+            Capsule()
+                .fill(fillColor)
+                .shadow(
+                    color: raised && !usesLightText ? Color(red: 0.36, green: 0.29, blue: 0.2).opacity(0.10) : .clear,
+                    radius: 12,
+                    y: 4
+                )
         )
-        .overlay(
-            Capsule().stroke(
-                usesLightText ? Color.white.opacity(0.26) : Color.black.opacity(0.12),
-                lineWidth: 1
-            )
-        )
+        .overlay(Capsule().stroke(strokeColor, lineWidth: 1))
         .contentShape(Capsule())
     }
 
     private var labelColor: Color {
-        if emphasized { return .white.opacity(0.98) }
-        return usesLightText
-            ? .white.opacity(0.96)
-            : Color(red: 0.17, green: 0.18, blue: 0.19).opacity(0.94)
+        if usesLightText { return .white.opacity(raised ? 0.96 : 0.82) }
+        return RestPilotTheme.overlayInk.opacity(raised ? 0.92 : 0.58)
     }
 
     private var fillColor: Color {
-        if emphasized {
-            return usesLightText ? .black.opacity(0.50) : .black.opacity(0.78)
-        }
-        return usesLightText ? .black.opacity(0.28) : .white.opacity(0.72)
+        guard raised else { return .clear }
+        return usesLightText ? .black.opacity(0.24) : .white
+    }
+
+    private var strokeColor: Color {
+        guard raised else { return .clear }
+        return usesLightText ? .white.opacity(0.30) : RestPilotTheme.overlayInk.opacity(0.07)
+    }
+
+    private var keycapFill: Color {
+        usesLightText ? .white.opacity(0.18) : RestPilotTheme.overlayInk.opacity(0.07)
     }
 }
 
 struct OverlayButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .opacity(configuration.isPressed ? 0.72 : 1)
+            .opacity(configuration.isPressed ? 0.66 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
@@ -369,7 +395,6 @@ struct OverlayActionRow: View {
     let controlSize: OverlayActionControlSize
     let snoozeAction: (() -> Void)?
     let secondaryTitle: String?
-    let secondarySystemImage: String?
     let secondaryAction: (() -> Void)?
     var enablesEscapeShortcut = true
     var stacksVertically = false
@@ -388,38 +413,33 @@ struct OverlayActionRow: View {
         if let snoozeAction {
             Button(action: snoozeAction) {
                 OverlayActionLabel(
-                    title: "5 分钟后再次提醒",
-                    systemImage: "clock.arrow.circlepath",
+                    title: "延后 5 分钟",
                     usesLightText: usesLightText,
-                    emphasized: true,
+                    raised: true,
                     controlSize: controlSize
                 )
             }
             .buttonStyle(OverlayButtonStyle())
         }
 
-        if let secondaryTitle,
-           let secondarySystemImage,
-           let secondaryAction {
-            secondaryButton(
-                title: secondaryTitle,
-                systemImage: secondarySystemImage,
-                action: secondaryAction
-            )
+        if let secondaryTitle, let secondaryAction {
+            secondaryButton(title: secondaryTitle, action: secondaryAction)
         }
     }
 
     @ViewBuilder
     private func secondaryButton(
         title: String,
-        systemImage: String,
         action: @escaping () -> Void
     ) -> some View {
         let button = Button(action: action) {
             OverlayActionLabel(
                 title: title,
-                systemImage: systemImage,
                 usesLightText: usesLightText,
+                // Without a snooze pill next to it this is the only control,
+                // so it takes the raised look.
+                raised: snoozeAction == nil,
+                keycap: enablesEscapeShortcut ? "esc" : nil,
                 controlSize: controlSize
             )
         }
@@ -455,8 +475,8 @@ struct BreakPresentationLayout: Layout {
         let topInset: CGFloat = compact ? 24 : 48
         let bottomInset: CGFloat = compact ? 24 : 72
         let preferredGap: CGFloat = compact ? 32 : 64
-        let preferredContentCenter = containerHeight * 0.43
-        let preferredActionCenter = containerHeight * 0.74
+        let preferredContentCenter = containerHeight * 0.45
+        let preferredActionCenter = containerHeight * 0.86
         let maximumActionCenter = containerHeight - bottomInset - actionHeight / 2
         var actionCenter = min(preferredActionCenter, maximumActionCenter)
         let minimumContentCenter = topInset + contentHeight / 2
@@ -541,53 +561,120 @@ struct BreakPresentationLayout: Layout {
     }
 }
 
+/// White pill holding the remaining-time ring and the countdown.
+struct CountdownPill: View {
+    let time: String
+    let progress: Double
+    let usesLightText: Bool
+    var scale: CGFloat = 1
+
+    var body: some View {
+        HStack(spacing: 11 * scale) {
+            ProgressRing(
+                progress: progress,
+                lineWidth: 3.2 * scale,
+                tint: usesLightText ? .white : RestPilotTheme.overlayAccent,
+                track: usesLightText ? .white.opacity(0.28) : RestPilotTheme.overlayInk.opacity(0.09)
+            )
+            .frame(width: 22 * scale, height: 22 * scale)
+            Text(time)
+                .font(.system(size: 24 * scale, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+        }
+        .padding(.leading, 16 * scale)
+        .padding(.trailing, 20 * scale)
+        .frame(height: 50 * scale)
+        .background(
+            Capsule()
+                .fill(usesLightText ? Color.black.opacity(0.24) : Color.white)
+                .shadow(
+                    color: usesLightText ? .clear : Color(red: 0.36, green: 0.29, blue: 0.2).opacity(0.12),
+                    radius: 18 * scale,
+                    y: 6 * scale
+                )
+        )
+        .overlay(
+            Capsule().stroke(
+                usesLightText ? Color.white.opacity(0.30) : RestPilotTheme.overlayInk.opacity(0.06),
+                lineWidth: 1
+            )
+        )
+    }
+}
+
+/// Small label above the headline naming the kind of break.
+struct BreakKindChip: View {
+    let title: String
+    let usesLightText: Bool
+    var scale: CGFloat = 1
+
+    var body: some View {
+        HStack(spacing: 7 * scale) {
+            Circle()
+                .fill(usesLightText ? Color.white : RestPilotTheme.overlayAccent)
+                .frame(width: 6 * scale, height: 6 * scale)
+            Text(title)
+                .font(.system(size: 13 * scale, weight: .medium))
+        }
+        .padding(.horizontal, 12 * scale)
+        .frame(height: 28 * scale)
+        .background(
+            usesLightText ? Color.black.opacity(0.22) : RestPilotTheme.overlayInk.opacity(0.055),
+            in: Capsule()
+        )
+    }
+}
+
 struct BreakPresentation: View {
     let eyebrow: String
     let time: String
+    /// Share of the break still remaining, drawn as the countdown ring.
+    var progress: Double = 1
     let content: BreakContent
     let settings: AppSettings
     let hasBackgroundImage: Bool
     let reminderMessage: String?
     let snoozeAction: (() -> Void)?
     let secondaryTitle: String?
-    let secondarySystemImage: String?
     let secondaryAction: (() -> Void)?
     var enablesEscapeShortcut = true
 
     var body: some View {
         let usesLightText = hasBackgroundImage || settings.overlayStyle == .dimmed
         BreakPresentationLayout {
-            VStack(spacing: 24) {
-                Text(eyebrow)
-                    .font(.system(size: 16, weight: .semibold))
-                    .tracking(3)
-                    .opacity(0.82)
+            VStack(spacing: 0) {
+                BreakKindChip(title: eyebrow, usesLightText: usesLightText)
                 Text(content.text)
-                    .font(.system(size: 56 * settings.textScale, weight: .medium))
+                    .font(.system(size: 48 * settings.textScale, weight: .semibold))
+                    .tracking(-0.4)
                     .multilineTextAlignment(.center)
+                    .lineSpacing(6)
                     .lineLimit(3)
+                    .shadow(color: .black.opacity(hasBackgroundImage ? 0.30 : 0), radius: 14, y: 2)
+                    .padding(.top, 26)
                 if settings.showCountdown {
-                    Text(time)
-                        .font(.system(size: 34 * settings.textScale, weight: .medium, design: .monospaced))
-                        .monospacedDigit()
-                        .opacity(0.86)
+                    CountdownPill(
+                        time: time,
+                        progress: progress,
+                        usesLightText: usesLightText,
+                        scale: settings.textScale
+                    )
+                    .padding(.top, 36)
                 }
                 if let reminderMessage {
-                    Label(reminderMessage, systemImage: "exclamationmark.circle")
-                        .font(.system(size: 16, weight: .semibold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(
-                            usesLightText ? Color.black.opacity(0.18) : Color.black.opacity(0.065),
-                            in: Capsule()
-                        )
-                        .opacity(0.88)
+                    Text(reminderMessage)
+                        .font(.system(size: 14))
+                        .opacity(usesLightText ? 0.9 : 0.6)
+                        .shadow(color: .black.opacity(hasBackgroundImage ? 0.35 : 0), radius: 8, y: 1)
+                        .padding(.top, 22)
                 }
                 if let path = content.imagePath, let image = NSImage(contentsOfFile: path) {
                     Image(nsImage: image)
                         .resizable()
                         .scaledToFit()
                         .frame(maxWidth: 440 * settings.imageScale, maxHeight: 240 * settings.imageScale)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .padding(.top, 32)
                 }
             }
             .frame(maxWidth: 1100)
@@ -598,7 +685,6 @@ struct BreakPresentation: View {
                     controlSize: .regular,
                     snoozeAction: snoozeAction,
                     secondaryTitle: secondaryTitle,
-                    secondarySystemImage: secondarySystemImage,
                     secondaryAction: secondaryAction,
                     enablesEscapeShortcut: enablesEscapeShortcut
                 )
@@ -608,10 +694,9 @@ struct BreakPresentation: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .foregroundStyle(
             usesLightText
-                ? Color.white.opacity(0.94)
-                : Color(red: 0.16, green: 0.17, blue: 0.18)
+                ? Color.white.opacity(0.95)
+                : RestPilotTheme.overlayInk
         )
-        .shadow(color: .black.opacity(hasBackgroundImage ? 0.22 : 0), radius: 14, y: 3)
     }
 }
 
@@ -627,7 +712,8 @@ private struct BreakOverlayView: View {
             OverlayBackground(settings: settings, backgroundPath: backgroundPath)
             BreakPresentation(
                 eyebrow: session.kind.displayName,
-                time: formattedCountdown(engine.remaining(for: session.id, now: now)),
+                time: formattedCountdown(remaining),
+                progress: totalDuration > 0 ? remaining / totalDuration : 1,
                 content: session.content,
                 settings: settings,
                 hasBackgroundImage: backgroundPath != nil,
@@ -636,13 +722,20 @@ private struct BreakOverlayView: View {
                     ? { engine.snoozeCurrentBreak(minutes: 5) }
                     : nil,
                 secondaryTitle: skipAvailable ? secondaryTitle : nil,
-                secondarySystemImage: skipAvailable ? secondarySystemImage : nil,
                 secondaryAction: skipAvailable ? secondaryAction : nil,
                 enablesEscapeShortcut: !session.delaysSkip
             )
         }
         .ignoresSafeArea()
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now = $0 }
+    }
+
+    private var remaining: TimeInterval {
+        engine.remaining(for: session.id, now: now)
+    }
+
+    private var totalDuration: TimeInterval {
+        engine.viewState(now: now).duration
     }
 
     /// Seconds until the skip button appears. Zero when skipping is immediate.
@@ -655,7 +748,7 @@ private struct BreakOverlayView: View {
 
     private var reminderMessage: String? {
         guard session.restDebt > 0 else { return nil }
-        var parts = ["今天还欠 \(formattedRestDebt(session.restDebt)) 休息"]
+        var parts = ["今天还欠 \(formattedRestDebt(session.restDebt))休息"]
         if session.extendedBy > 0 {
             parts.append("这次延长 \(formattedRestDebt(session.extendedBy))")
         }
@@ -667,12 +760,7 @@ private struct BreakOverlayView: View {
 
     private var secondaryTitle: String? {
         if session.source == .manual { return "结束休息" }
-        return settings.showSkipButton ? "跳过这次休息" : nil
-    }
-
-    private var secondarySystemImage: String? {
-        if session.source == .manual { return "xmark" }
-        return settings.showSkipButton ? "forward.end" : nil
+        return settings.showSkipButton ? "跳过" : nil
     }
 
     private var secondaryAction: (() -> Void)? {
@@ -699,13 +787,13 @@ private struct PreviewOverlayView: View {
             BreakPresentation(
                 eyebrow: "预览 · \(kind.displayName)",
                 time: formattedCountdown(deadline.timeIntervalSince(now)),
+                progress: max(0, deadline.timeIntervalSince(now)) / max(1, settings.duration(for: kind)),
                 content: content,
                 settings: settings,
                 hasBackgroundImage: backgroundPath != nil,
                 reminderMessage: nil,
                 snoozeAction: nil,
                 secondaryTitle: "关闭预览",
-                secondarySystemImage: "xmark",
                 secondaryAction: close
             )
         }

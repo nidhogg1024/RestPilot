@@ -113,6 +113,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ScheduleEngineDelegate
             let window = NSWindow(contentViewController: controller)
             window.title = "RestPilot 设置"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.backgroundColor = RestPilotTheme.canvasNSColor
             window.setContentSize(NSSize(width: 800, height: 560))
             window.minSize = NSSize(width: 760, height: 520)
             window.maxSize = NSSize(width: 940, height: 720)

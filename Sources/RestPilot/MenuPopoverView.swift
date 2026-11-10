@@ -11,159 +11,187 @@ struct MenuPopoverView: View {
         let state = engine.viewState(now: now)
         let summary = engine.todaySummary(now: now)
         let debt = engine.restDebt(now: now)
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 12) {
-                statusRow(state)
-                timerRow(state)
-                progressBar(state)
-                nextBreakRow(state)
-                if hasActivity(summary) || debt > 0 {
+        VStack(spacing: 10) {
+            SoftCard(padding: 16, cornerRadius: 16) {
+                VStack(alignment: .leading, spacing: 14) {
+                    statusRow(state)
+                    timerRow(state)
+                    progressBar(state)
                     activitySummaryRow(summary, debt: debt)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxHeight: .infinity, alignment: .top)
-
-            Divider()
-            actionRow
+            quickBreakRow
+            Spacer(minLength: 0)
+            footerRow(state)
         }
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
         .frame(width: MenuPopoverMetrics.width, height: MenuPopoverMetrics.height)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(RestPilotTheme.canvas)
         .tint(RestPilotTheme.active)
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now = $0 }
     }
 
     private func statusRow(_ state: ScheduleViewState) -> some View {
-        HStack {
-            Text(phaseTitle(state))
+        HStack(spacing: 6) {
+            Circle()
+                .fill(statusColor(state))
+                .frame(width: 6, height: 6)
+            Text(statusLabel(state))
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-
+                .foregroundStyle(RestPilotTheme.inkSecondary)
             Spacer()
-
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(statusColor(state))
-                    .frame(width: 6, height: 6)
-                Text(statusLabel(state))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(statusColor(state))
-            }
         }
     }
 
     private func timerRow(_ state: ScheduleViewState) -> some View {
-        HStack(alignment: .center) {
-            Text(state.isStopped ? "--:--" : formattedCountdown(state.remaining))
-                .font(.system(size: 38, weight: .medium, design: .rounded))
-                .monospacedDigit()
-                .tracking(-0.8)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(state.isStopped ? "--:--" : formattedCountdown(state.remaining))
+                    .font(.system(size: 42, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .tracking(-0.6)
+                    .foregroundStyle(RestPilotTheme.ink)
+                Text(contextLine(state))
+                    .font(.system(size: 12))
+                    .foregroundStyle(RestPilotTheme.inkSecondary)
+                    .lineLimit(1)
+            }
 
-            Spacer()
+            Spacer(minLength: 0)
 
             Button {
                 engine.toggleManualPause()
             } label: {
-                Label(primaryActionTitle(state), systemImage: primaryActionIcon(state))
+                Image(systemName: primaryActionIcon(state))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(RestPilotTheme.active)
+                    .frame(width: 44, height: 44)
+                    .background(RestPilotTheme.activeSurface, in: Circle())
+                    .contentShape(Circle())
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .buttonStyle(SoftPressStyle())
+            .help(primaryActionTitle(state))
+            .accessibilityLabel(primaryActionTitle(state))
         }
     }
 
     private func progressBar(_ state: ScheduleViewState) -> some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.09))
+                Capsule().fill(RestPilotTheme.fill)
                 Capsule()
-                    .fill(statusColor(state).opacity(0.82))
-                    .frame(width: proxy.size.width * progress(state))
+                    .fill(statusColor(state))
+                    .frame(width: max(4, proxy.size.width * progress(state)))
+                    .opacity(progress(state) > 0 ? 1 : 0)
             }
         }
-        .frame(height: 3)
+        .frame(height: 4)
         .animation(.easeOut(duration: 0.3), value: progress(state))
     }
 
-    private func nextBreakRow(_ state: ScheduleViewState) -> some View {
-        HStack(spacing: 7) {
-            Text(contextTitle(state))
-                .foregroundStyle(.secondary)
-            Text(contextDetail(state))
-                .fontWeight(.medium)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-        }
-        .font(.system(size: 12))
-    }
-
     private func activitySummaryRow(_ summary: BreakSummary, debt: TimeInterval) -> some View {
-        Text(activitySummaryText(summary, debt: debt))
-            .font(.system(size: 10))
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func hasActivity(_ summary: BreakSummary) -> Bool {
-        summary.completed > 0 || summary.skipped > 0 || summary.snoozed > 0
-    }
-
-    private func activitySummaryText(_ summary: BreakSummary, debt: TimeInterval) -> String {
-        var parts: [String] = []
-        if summary.completed > 0 { parts.append("完成 \(summary.completed)") }
-        if summary.skipped > 0 { parts.append("跳过 \(summary.skipped)") }
-        if summary.snoozed > 0 { parts.append("延后 \(summary.snoozed)") }
-        if debt > 0 { parts.append("欠 \(formattedRestDebt(debt))") }
-        return "今日 " + parts.joined(separator: " · ")
-    }
-
-    private var actionRow: some View {
-        HStack(spacing: 14) {
-            Menu {
-                if settings.eyeEnabled { Button("眼睛休息") { engine.startBreak(.eye) } }
-                if settings.standEnabled { Button("站立休息") { engine.startBreak(.stand) } }
-                Divider()
-                Button("停止计时", role: .destructive) { engine.stopSchedule() }
-            } label: {
-                Label("休息", systemImage: "cup.and.saucer")
+        HStack(spacing: 0) {
+            Text("今日完成 \(summary.completed)")
+            Spacer(minLength: 8)
+            Text("跳过 \(summary.skipped)")
+            Spacer(minLength: 8)
+            if debt > 0 {
+                Text("还欠 \(formattedRestDebt(debt))")
+                    .fontWeight(.medium)
+                    .foregroundStyle(RestPilotTheme.active)
+            } else {
+                Text("延后 \(summary.snoozed)")
             }
-            .menuStyle(.borderlessButton)
-
-            Button { engine.resetWork() } label: {
-                Label("重置", systemImage: "arrow.counterclockwise")
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            Button(action: openSettings) {
-                Image(systemName: "slider.horizontal.3")
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("设置")
-
-            Button { NSApplication.shared.terminate(nil) } label: {
-                Image(systemName: "power")
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("退出 RestPilot")
         }
-        .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 16)
-        .frame(height: 45)
+        .font(.system(size: 11.5))
+        .monospacedDigit()
+        .foregroundStyle(RestPilotTheme.inkSecondary)
+        .lineLimit(1)
     }
 
-    private func nextBreakDescription() -> String {
+    private var quickBreakRow: some View {
+        HStack(spacing: 8) {
+            if settings.eyeEnabled {
+                quickBreakButton("眼睛休息", systemImage: "eye") { engine.startBreak(.eye) }
+            }
+            if settings.standEnabled {
+                quickBreakButton("站立休息", systemImage: "figure.walk") { engine.startBreak(.stand) }
+            }
+        }
+    }
+
+    private func quickBreakButton(
+        _ title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(RestPilotTheme.active)
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(RestPilotTheme.ink)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(SoftSurface(cornerRadius: 13, shadowRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SoftPressStyle())
+    }
+
+    private func footerRow(_ state: ScheduleViewState) -> some View {
+        HStack(spacing: 2) {
+            footerButton("重新计时") { engine.resetWork() }
+            if !state.isStopped {
+                footerButton("停止") { engine.stopSchedule() }
+            }
+            Spacer()
+            footerIcon("gearshape", help: "设置", action: openSettings)
+            footerIcon("power", help: "退出 RestPilot") { NSApplication.shared.terminate(nil) }
+        }
+        .foregroundStyle(RestPilotTheme.inkSecondary)
+    }
+
+    private func footerButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12))
+                .padding(.horizontal, 8)
+                .frame(height: 36)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(SoftPressStyle())
+    }
+
+    private func footerIcon(
+        _ systemImage: String,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 34, height: 36)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(SoftPressStyle())
+        .help(help)
+        .accessibilityLabel(help)
+    }
+
+    private func contextLine(_ state: ScheduleViewState) -> String {
+        if state.isStopped { return "计时已停止" }
+        if case .resting = state.phase { return state.content?.text ?? "休息一下" }
+        if case .snoozed(let kind) = state.phase { return "后再次提醒\(kind.displayName)" }
         guard let kind = engine.nextScheduledBreakKind() else { return "未启用休息计划" }
         switch kind {
-        case .eye: return "眼睛休息 · \(settings.eyeBreakSeconds) 秒"
-        case .stand: return "站立休息 · \(settings.standBreakMinutes) 分钟"
+        case .eye: return "后休息眼睛 \(settings.eyeBreakSeconds) 秒"
+        case .stand: return "后站起来活动 \(settings.standBreakMinutes) 分钟"
         }
     }
 
@@ -172,27 +200,17 @@ struct MenuPopoverView: View {
         return min(1, max(0, 1 - state.remaining / state.duration))
     }
 
-    private func phaseTitle(_ state: ScheduleViewState) -> String {
-        if state.isPaused { return "已暂停" }
-        switch state.phase {
-        case .stopped: return "准备开始"
-        case .working: return "专注中"
-        case .snoozed: return "休息已延后"
-        case .resting(let kind): return kind.displayName
-        }
-    }
-
     private func statusLabel(_ state: ScheduleViewState) -> String {
         if state.isStopped { return "已停止" }
         if state.isPaused { return "已暂停" }
         if case .resting = state.phase { return "休息中" }
         if case .snoozed = state.phase { return "等待提醒" }
-        return "运行中"
+        return "专注中"
     }
 
     private func statusColor(_ state: ScheduleViewState) -> Color {
-        if state.isStopped { return Color.secondary.opacity(0.45) }
-        if state.isPaused { return RestPilotTheme.warning }
+        if state.isStopped { return RestPilotTheme.inkTertiary }
+        if state.isPaused { return RestPilotTheme.inkTertiary }
         if case .snoozed = state.phase { return RestPilotTheme.warning }
         return RestPilotTheme.active
     }
@@ -204,21 +222,5 @@ struct MenuPopoverView: View {
 
     private func primaryActionIcon(_ state: ScheduleViewState) -> String {
         state.isStopped || state.isPaused ? "play.fill" : "pause.fill"
-    }
-
-    private func contextTitle(_ state: ScheduleViewState) -> String {
-        if case .resting = state.phase { return "当前" }
-        if case .snoozed = state.phase { return "到时" }
-        return "下一次"
-    }
-
-    private func contextDetail(_ state: ScheduleViewState) -> String {
-        if case .resting = state.phase {
-            return state.content?.text ?? "休息一下"
-        }
-        if case .snoozed(let kind) = state.phase {
-            return "\(kind.displayName)将再次出现"
-        }
-        return nextBreakDescription()
     }
 }

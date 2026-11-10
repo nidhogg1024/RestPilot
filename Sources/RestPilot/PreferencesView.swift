@@ -44,30 +44,24 @@ struct PreferencesView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            List(SettingsSection.allCases, selection: $selection) { section in
-                Label(section.rawValue, systemImage: section.icon)
-                    .tag(section)
-                    .padding(.vertical, 4)
-            }
-            .listStyle(.sidebar)
-            .frame(minWidth: 168, idealWidth: 168, maxWidth: 168)
-            .fixedSize(horizontal: true, vertical: false)
-            Divider()
+            sidebar
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 22) {
                     pageHeader
                     pageContent
                 }
                 .padding(.horizontal, 28)
-                .padding(.vertical, 22)
-                .frame(maxWidth: 600, alignment: .topLeading)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
+                .frame(maxWidth: selection == .content ? 760 : 680, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
-            .background(Color(nsColor: .windowBackgroundColor))
             .layoutPriority(1)
         }
         .frame(minWidth: 760, minHeight: 520)
-        .toggleStyle(.switch)
+        .background(RestPilotTheme.canvas)
+        .toggleStyle(SoftSwitchStyle())
+        .controlSize(.small)
         .tint(RestPilotTheme.active)
         .onChange(of: settings) { onSave($0) }
         .alert("无法修改开机启动", isPresented: Binding(get: { launchError != nil }, set: { if !$0 { launchError = nil } })) {
@@ -75,11 +69,52 @@ struct PreferencesView: View {
         } message: { Text(launchError ?? "") }
     }
 
-    private var pageHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(selection?.rawValue ?? "设置").font(.system(size: 21, weight: .semibold))
-            Text(pageSubtitle).font(.system(size: 12)).foregroundStyle(.secondary)
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(SettingsSection.allCases) { section in
+                sidebarRow(section)
+            }
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .frame(width: 172)
+    }
+
+    private func sidebarRow(_ section: SettingsSection) -> some View {
+        let selected = (selection ?? .general) == section
+        return Button {
+            selection = section
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: section.icon)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(selected ? RestPilotTheme.active : RestPilotTheme.inkSecondary)
+                    .frame(width: 18)
+                Text(section.rawValue)
+                    .font(.system(size: 13, weight: selected ? .medium : .regular))
+                    .foregroundStyle(selected ? RestPilotTheme.ink : RestPilotTheme.inkSecondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 34)
+            .background(SoftSurface(cornerRadius: 10, shadowRadius: 6).opacity(selected ? 1 : 0))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var pageHeader: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(selection?.rawValue ?? "设置")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(RestPilotTheme.ink)
+            Text(pageSubtitle)
+                .font(.system(size: 12.5))
+                .foregroundStyle(RestPilotTheme.inkSecondary)
+        }
+        .padding(.horizontal, 4)
     }
 
     @ViewBuilder private var pageContent: some View {
@@ -96,56 +131,34 @@ struct PreferencesView: View {
         case .general: return "控制 RestPilot 如何随系统运行，以及什么时候暂停计时。"
         case .plans: return "组合短休息和站立休息，建立适合你的工作节奏。"
         case .content: return "管理休息时展示的文字和图片，并随时预览效果。"
-        case .appearance: return "调整遮罩、显示器、声音与菜单栏表现。"
+        case .appearance: return "调整休息画面、显示器、声音与菜单栏表现。"
         }
     }
 
     private var generalPage: some View {
         VStack(spacing: 22) {
-            SettingsGroup(
-                title: "启动",
-                state: settings.launchAtLogin ? .active : .inactive
-            ) {
-                settingRow(
-                    "开机自动启动",
-                    detail: "登录 Mac 后自动开始运行",
-                    icon: "power",
-                    isActive: settings.launchAtLogin
-                ) {
-                    Toggle("", isOn: $settings.launchAtLogin).labelsHidden().controlSize(.small)
+            SettingsGroup(title: "启动") {
+                SettingsRow(title: "开机自动启动", detail: "登录 Mac 后自动开始运行") {
+                    Toggle("", isOn: $settings.launchAtLogin).labelsHidden()
                         .onChange(of: settings.launchAtLogin) { updateLaunchAtLogin($0) }
                 }
             }
-            SettingsGroup(
-                title: "智能暂停",
-                state: settings.pauseWhenLocked || settings.pauseWhenIdle ? .active : .inactive
-            ) {
-                settingRow(
-                    "锁屏或睡眠时暂停",
-                    detail: "返回后从原来的剩余时间继续",
-                    icon: "lock",
-                    isActive: settings.pauseWhenLocked
-                ) {
-                    Toggle("", isOn: $settings.pauseWhenLocked).labelsHidden().controlSize(.small)
+            SettingsGroup(title: "智能暂停") {
+                SettingsRow(title: "锁屏或睡眠时暂停", detail: "返回后从原来的剩余时间继续") {
+                    Toggle("", isOn: $settings.pauseWhenLocked).labelsHidden()
                 }
-                Divider()
-                settingRow(
-                    "长时间无操作时暂停",
-                    detail: "避免离开电脑时仍累计工作时间",
-                    icon: "hand.raised",
-                    isActive: settings.pauseWhenIdle
-                ) {
-                    Toggle("", isOn: $settings.pauseWhenIdle).labelsHidden().controlSize(.small)
+                RowDivider()
+                SettingsRow(title: "长时间无操作时暂停", detail: "避免离开电脑时仍累计工作时间") {
+                    Toggle("", isOn: $settings.pauseWhenIdle).labelsHidden()
                 }
                 if settings.pauseWhenIdle {
-                    Divider()
-                    HStack {
-                        Text("无操作阈值").foregroundStyle(.secondary)
-                        Spacer()
+                    RowDivider()
+                    SettingsRow(title: "无操作多久算离开") {
                         Picker("无操作阈值", selection: $settings.idleMinutes) {
                             ForEach([1, 3, 5, 10, 15, 30, 60], id: \.self) { Text("\($0) 分钟").tag($0) }
                         }
                         .labelsHidden()
+                        .controlSize(.regular)
                         .frame(width: 105)
                     }
                 }
@@ -159,135 +172,151 @@ struct PreferencesView: View {
             planGroup(kind: .stand, enabled: $settings.standEnabled)
             SettingsGroup(
                 title: "休息欠账",
-                state: settings.strengthenSkipReminders ? .active : .inactive
+                footer: "完成或部分完成的休息按实际时长抵扣，离开电脑 15 分钟以上也算休息。欠账隔天清零，自动休息始终可以延后。"
             ) {
-                settingRow(
-                    "记录当天欠下的休息",
-                    detail: "跳过的休息时长累计为欠账，遮罩上显示；欠账多时下一次休息适度延长，跳过需等待 10 秒",
-                    icon: "hourglass.bottomhalf.filled",
-                    isActive: settings.strengthenSkipReminders
+                SettingsRow(
+                    title: "记录当天欠下的休息",
+                    detail: "跳过的时长会累计。欠账多时下一次休息适度延长，跳过需等待 10 秒"
                 ) {
-                    Toggle("", isOn: $settings.strengthenSkipReminders)
-                        .labelsHidden()
-                        .controlSize(.small)
+                    Toggle("", isOn: $settings.strengthenSkipReminders).labelsHidden()
                 }
-                Text("完成或部分完成的休息按实际时长抵扣，离开电脑 15 分钟以上也算休息；欠账隔天清零，自动休息始终可以延后。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             if !settings.eyeEnabled && !settings.standEnabled {
-                Label("至少启用一种休息计划；否则当前工作周期结束后会自动停止。", systemImage: "exclamationmark.triangle")
-                    .font(.caption)
+                Label("至少启用一种休息计划，否则当前工作周期结束后会自动停止。", systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 12))
                     .foregroundStyle(RestPilotTheme.warning)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         RestPilotTheme.warningSurface,
-                        in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                     )
             }
         }
     }
 
     private func planGroup(kind: BreakKind, enabled: Binding<Bool>) -> some View {
-        let isEnabled = enabled.wrappedValue
-        return SettingsGroup(
+        SettingsGroup(
             title: kind.displayName,
-            state: isEnabled ? .active : .inactive
+            footer: kind == .stand && enabled.wrappedValue
+                ? "例如设为 2：眼睛休息、工作、眼睛休息、工作，然后站立休息。"
+                : nil
         ) {
-            HStack {
-                SettingsStatusIcon(
-                    systemImage: kind == .eye ? "eye" : "figure.walk",
-                    state: isEnabled ? .active : .inactive
-                )
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(kind == .eye ? "短暂离开屏幕，缓解眼部疲劳" : "定期站起来活动身体")
-                    Label(
-                        isEnabled ? "计划已启用" : "计划已关闭",
-                        systemImage: isEnabled ? "checkmark.circle.fill" : "circle"
-                    )
-                    .font(.caption.weight(isEnabled ? .semibold : .regular))
-                    .foregroundStyle(isEnabled ? RestPilotTheme.active : RestPilotTheme.inactive)
-                }
-                Spacer()
+            SettingsRow(
+                title: kind == .eye ? "提醒我看看远处" : "提醒我站起来活动",
+                detail: kind == .eye ? "短暂离开屏幕，缓解眼部疲劳" : "定期起身，活动一下身体"
+            ) {
                 Toggle("", isOn: enabled).labelsHidden()
             }
-            if isEnabled {
-                Divider()
+            if enabled.wrappedValue {
+                RowDivider()
                 if kind == .eye {
-                    durationEditor(title: "专注时长", value: $settings.workMinutes, range: 1...180, unit: "分钟")
-                    durationEditor(title: "休息时长", value: $settings.eyeBreakSeconds, range: 5...600, unit: "秒", step: 5)
+                    numberRow("每专注多久休息一次", value: $settings.workMinutes, range: 1...180, unit: "分钟")
+                    RowDivider()
+                    numberRow("每次休息多久", value: $settings.eyeBreakSeconds, range: 5...600, unit: "秒", step: 5)
                 } else {
-                    durationEditor(title: "触发频率", value: $settings.standAfterEyeBreaks, range: 1...12, unit: "次眼休后")
-                    durationEditor(title: "休息时长", value: $settings.standBreakMinutes, range: 1...30, unit: "分钟")
-                    Text("例如设为 2：眼休 → 工作 → 眼休 → 工作 → 站立休息。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    numberRow("每几次眼睛休息后站立", value: $settings.standAfterEyeBreaks, range: 1...12, unit: "次")
+                    RowDivider()
+                    numberRow("每次休息多久", value: $settings.standBreakMinutes, range: 1...30, unit: "分钟")
                 }
-                HStack {
-                    Spacer()
-                    Button("预览 \(kind.displayName)") { onPreview(kind, settings) }
+                RowDivider()
+                SettingsRow(title: "看看效果") {
+                    softButton("预览") { onPreview(kind, settings) }
                 }
             }
         }
     }
 
-    private func durationEditor(title: String, value: Binding<Int>, range: ClosedRange<Int>, unit: String, step: Int = 1) -> some View {
-        HStack {
-            Text(title).foregroundStyle(.secondary)
-            Spacer()
-            TextField("", value: value, format: .number)
-                .multilineTextAlignment(.trailing)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 58)
-                .onChange(of: value.wrappedValue) { value.wrappedValue = min(range.upperBound, max(range.lowerBound, $0)) }
-            Text(unit).foregroundStyle(.secondary).frame(minWidth: 72, alignment: .leading)
+    private func numberRow(_ title: String, value: Binding<Int>, range: ClosedRange<Int>, unit: String, step: Int = 1) -> some View {
+        SettingsRow(title: title) {
+            HStack(spacing: 8) {
+                TextField("", value: value, format: .number)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.center)
+                    .font(.system(size: 13, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(RestPilotTheme.ink)
+                    .frame(width: 52, height: 28)
+                    .background(RestPilotTheme.fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .onChange(of: value.wrappedValue) { value.wrappedValue = min(range.upperBound, max(range.lowerBound, $0)) }
+                    .accessibilityLabel(title)
+                Text(unit)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(RestPilotTheme.inkSecondary)
+                    .frame(width: 28, alignment: .leading)
+            }
         }
+    }
+
+    /// Quiet pill button used for secondary actions inside cards.
+    private func softButton(_ title: String, role: ButtonRole? = nil, action: @escaping () -> Void) -> some View {
+        Button(role: role, action: action) {
+            Text(title)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(role == .destructive ? RestPilotTheme.warning : RestPilotTheme.ink)
+                .padding(.horizontal, 13)
+                .frame(height: 28)
+                .background(RestPilotTheme.fill, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(SoftPressStyle())
     }
 
     private var contentPage: some View {
-        VStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 16) {
             Picker("内容类型", selection: $contentKind) {
                 ForEach(BreakKind.allCases) { Text($0.displayName).tag($0) }
             }
             .pickerStyle(.segmented)
-            HSplitView {
-                VStack(alignment: .leading, spacing: 12) {
+            .labelsHidden()
+            .controlSize(.regular)
+            .frame(width: 220)
+            HStack(alignment: .top, spacing: 18) {
+                VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("内容库").font(.headline)
+                        Text("内容库")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(RestPilotTheme.inkSecondary)
                         Spacer()
-                        Button { addContent() } label: { Image(systemName: "plus") }
-                            .buttonStyle(.bordered).help("添加内容")
+                        Button { addContent() } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(RestPilotTheme.ink)
+                                .frame(width: 28, height: 28)
+                                .background(RestPilotTheme.fill, in: Circle())
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(SoftPressStyle())
+                        .help("添加内容")
+                        .accessibilityLabel("添加内容")
                     }
-                    Text("拖动卡片排序；图片也可以直接拖到卡片中。")
-                        .font(.caption).foregroundStyle(.secondary)
-                    ScrollView { contentCards }
+                    .padding(.horizontal, 4)
+                    contentCards
+                    Text("拖动卡片排序，图片也可以直接拖到卡片中。")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(RestPilotTheme.inkTertiary)
+                        .padding(.horizontal, 4)
                     HStack {
-                        Button("恢复默认") { restoreDefaultContents() }
+                        softButton("恢复默认") { restoreDefaultContents() }
                         Spacer()
-                        Button("全屏预览") { onPreview(contentKind, settings) }
                     }
                 }
-                .padding(16)
-                .frame(minWidth: 330, idealWidth: 370, maxWidth: 430)
+                .frame(minWidth: 300, idealWidth: 340, maxWidth: 360)
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("实时预览").font(.headline)
+                        Text("实时预览")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(RestPilotTheme.inkSecondary)
                         Spacer()
-                        Text(contentKind.displayName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        softButton("全屏预览") { onPreview(contentKind, settings) }
                     }
+                    .padding(.horizontal, 4)
                     InlineBreakPreview(kind: contentKind, content: selectedContent, settings: settings)
-                    Text("编辑文字、替换图片或调整显示样式后，预览会立即更新。")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
-                .padding(16)
                 .frame(minWidth: 280)
             }
-            .frame(minHeight: 430)
         }
         .onChange(of: contentKind) { _ in selectedContentID = nil }
     }
@@ -295,14 +324,22 @@ struct PreferencesView: View {
     @ViewBuilder private var contentCards: some View {
         let binding = contentKind == .eye ? $settings.eyeContents : $settings.standContents
         if binding.wrappedValue.isEmpty {
-            VStack(spacing: 10) {
-                Image(systemName: "text.bubble").font(.system(size: 32)).foregroundStyle(.secondary)
-                Text("还没有提示内容").font(.headline)
-                Text("添加一条文字或图片提示。").font(.caption).foregroundStyle(.secondary)
+            SoftCard {
+                VStack(spacing: 8) {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 26))
+                        .foregroundStyle(RestPilotTheme.inkTertiary)
+                    Text("还没有提示内容")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(RestPilotTheme.ink)
+                    Text("添加一条文字或图片提示。")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(RestPilotTheme.inkSecondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 160)
             }
-            .frame(maxWidth: .infinity, minHeight: 180)
         } else {
-            LazyVStack(spacing: 10) {
+            VStack(spacing: 10) {
                 ForEach(Array(binding.wrappedValue.enumerated()), id: \.element.id) { index, item in
                     contentCard(binding: binding, index: index, item: item)
                         .onDrag {
@@ -316,53 +353,56 @@ struct PreferencesView: View {
                         ))
                 }
             }
-            .padding(.vertical, 2)
         }
     }
 
     private func contentCard(binding: Binding<[BreakContent]>, index: Int, item: BreakContent) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary)
-                Toggle(isOn: binding[index].isEnabled) {
-                    Label(
-                        item.isEnabled ? "已启用" : "已停用",
-                        systemImage: item.isEnabled ? "checkmark.circle.fill" : "circle"
-                    )
-                    .font(.caption.weight(item.isEnabled ? .semibold : .regular))
-                    .foregroundStyle(item.isEnabled ? RestPilotTheme.active : RestPilotTheme.inactive)
-                }
-                .toggleStyle(.switch)
-                .controlSize(.small)
+        let selected = selectedContentID == item.id
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 11))
+                    .foregroundStyle(RestPilotTheme.inkTertiary)
+                Text(item.isEnabled ? "已启用" : "已停用")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(item.isEnabled ? RestPilotTheme.active : RestPilotTheme.inkTertiary)
                 Spacer()
+                Toggle("启用这条提示", isOn: binding[index].isEnabled).labelsHidden()
                 Menu {
                     Button("复制") { duplicateContent(binding: binding, index: index) }
                     Button("删除", role: .destructive) { deleteContent(binding: binding, index: index) }
-                } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton)
+                } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .tint(RestPilotTheme.inkSecondary)
+                    .accessibilityLabel("更多操作")
             }
             TextField("输入休息提示…", text: binding[index].text, axis: .vertical)
-                .font(.body.weight(.medium))
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(RestPilotTheme.ink)
                 .textFieldStyle(.plain)
-                .lineLimit(2...4)
+                .lineLimit(1...4)
 
             imageDropArea(binding: binding, index: index, item: item)
 
-            HStack {
-                Button(item.imagePath == nil ? "添加图片" : "更换图片") { chooseImage(binding: binding, index: index) }
+            HStack(spacing: 8) {
+                softButton(item.imagePath == nil ? "添加图片" : "更换图片") { chooseImage(binding: binding, index: index) }
                 if item.imagePath != nil {
-                    Button("移除图片", role: .destructive) { binding.wrappedValue[index].imagePath = nil }
+                    softButton("移除图片", role: .destructive) { binding.wrappedValue[index].imagePath = nil }
                 }
                 Spacer()
-                Button("预览此条") {
+                softButton("预览此条") {
                     selectedContentID = item.id
                     onPreview(contentKind, settingsWithSelectedFirst(item))
                 }
             }
-            .buttonStyle(.borderless)
         }
         .padding(14)
-        .background(selectedContentID == item.id ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(selectedContentID == item.id ? Color.accentColor.opacity(0.72) : Color(nsColor: .separatorColor).opacity(0.30), lineWidth: selectedContentID == item.id ? 1.5 : 1))
+        .background(SoftSurface(
+            stroke: selected ? RestPilotTheme.active.opacity(0.75) : RestPilotTheme.hairline,
+            strokeWidth: selected ? 1.5 : 1
+        ))
         .contentShape(Rectangle())
         .onTapGesture { selectedContentID = item.id }
     }
@@ -371,17 +411,18 @@ struct PreferencesView: View {
         if let path = item.imagePath, let image = NSImage(contentsOfFile: path) {
             Image(nsImage: image)
                 .resizable().scaledToFill().frame(maxWidth: .infinity, minHeight: 120, maxHeight: 150)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(alignment: .bottomLeading) { Text("拖入另一张图片即可替换").font(.caption2).padding(7).background(.ultraThinMaterial, in: Capsule()).padding(8) }
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .onDrop(of: [UTType.fileURL], isTargeted: nil) { handleImageDrop($0, binding: binding, index: index) }
         } else {
-            VStack(spacing: 8) {
-                Image(systemName: "photo.badge.plus").font(.title2).foregroundStyle(.secondary)
-                Text("拖入图片，或点击下方添加").font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Image(systemName: "photo")
+                    .font(.system(size: 13))
+                Text("把图片拖到这里")
+                    .font(.system(size: 11.5))
             }
-            .frame(maxWidth: .infinity, minHeight: 100)
-            .background(Color.secondary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.24), style: StrokeStyle(lineWidth: 1, dash: [5])))
+            .foregroundStyle(RestPilotTheme.inkTertiary)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .background(RestPilotTheme.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .onDrop(of: [UTType.fileURL], isTargeted: nil) { handleImageDrop($0, binding: binding, index: index) }
         }
     }
@@ -389,200 +430,194 @@ struct PreferencesView: View {
     private var appearancePage: some View {
         VStack(spacing: 22) {
             SettingsGroup(
-                title: "全屏背景",
-                state: settings.backgroundMode == .none ? .inactive : .active
+                title: "休息画面背景",
+                footer: backgroundFooter
             ) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("展示方式").foregroundStyle(.secondary)
+                segmentedRow("展示方式") {
                     Picker("展示方式", selection: Binding(
                         get: { settings.backgroundMode },
                         set: { settings.backgroundMode = $0 }
                     )) {
                         ForEach(BackgroundMode.allCases) { Text($0.displayName).tag($0) }
                     }
-                    .pickerStyle(.segmented)
                 }
 
                 if settings.backgroundMode != .none {
-                    Divider()
-                    LazyVGrid(columns: [
-                        GridItem(.flexible(), spacing: 10),
-                        GridItem(.flexible(), spacing: 10)
-                    ], spacing: 10) {
-                        ForEach(BuiltInBackground.allCases) { background in
-                            backgroundTile(
-                                title: background.displayName,
-                                path: background.thumbnailPath,
-                                selected: settings.backgroundMode == .fixed && settings.selectedBackgroundID != "custom" && settings.selectedBackground == background
-                            ) {
-                                settings.selectedBackground = background
-                                settings.backgroundMode = .fixed
+                    RowDivider()
+                    VStack(alignment: .leading, spacing: 12) {
+                        LazyVGrid(columns: [
+                            GridItem(.flexible(), spacing: 10),
+                            GridItem(.flexible(), spacing: 10),
+                            GridItem(.flexible(), spacing: 10)
+                        ], spacing: 12) {
+                            ForEach(BuiltInBackground.allCases) { background in
+                                backgroundTile(
+                                    title: background.displayName,
+                                    path: background.thumbnailPath,
+                                    selected: settings.backgroundMode == .fixed && settings.selectedBackgroundID != "custom" && settings.selectedBackground == background
+                                ) {
+                                    settings.selectedBackground = background
+                                    settings.backgroundMode = .fixed
+                                }
                             }
-                        }
-                        if let customPath = settings.customBackgroundPath {
-                            backgroundTile(
-                                title: "自定义背景",
-                                path: customPath,
-                                selected: settings.backgroundMode == .fixed && settings.selectedBackgroundID == "custom"
-                            ) {
-                                settings.selectedBackgroundID = "custom"
-                                settings.backgroundMode = .fixed
-                            }
-                        }
-                    }
-                    HStack {
-                        Button(settings.customBackgroundPath == nil ? "导入自定义背景…" : "更换自定义背景…") {
-                            chooseBackground()
-                        }
-                        if settings.customBackgroundPath != nil {
-                            Button("移除自定义", role: .destructive) {
-                                settings.customBackgroundPath = nil
-                                if settings.selectedBackgroundID == "custom" {
-                                    settings.selectedBackground = .ambient
+                            if let customPath = settings.customBackgroundPath {
+                                backgroundTile(
+                                    title: "自定义背景",
+                                    path: customPath,
+                                    selected: settings.backgroundMode == .fixed && settings.selectedBackgroundID == "custom"
+                                ) {
+                                    settings.selectedBackgroundID = "custom"
+                                    settings.backgroundMode = .fixed
                                 }
                             }
                         }
-                        Spacer()
-                    }
-                    Divider()
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("背景暗化")
+                        HStack(spacing: 8) {
+                            softButton(settings.customBackgroundPath == nil ? "导入自定义背景…" : "更换自定义背景…") {
+                                chooseBackground()
+                            }
+                            if settings.customBackgroundPath != nil {
+                                softButton("移除自定义", role: .destructive) {
+                                    settings.customBackgroundPath = nil
+                                    if settings.selectedBackgroundID == "custom" {
+                                        settings.selectedBackground = .ambient
+                                    }
+                                }
+                            }
                             Spacer()
-                            Text("\(Int(settings.backgroundDim * 100))%").foregroundStyle(.secondary)
                         }
-                        Slider(value: Binding(
-                            get: { settings.backgroundDim },
-                            set: { settings.backgroundDim = $0 }
-                        ), in: 0...0.45)
                     }
-                    Text(settings.backgroundMode == .random
-                         ? "每次休息会从内置背景和自定义背景中随机选择。"
-                         : "每块显示器会按自身比例独立裁切，不会拉伸图片。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .padding(16)
+                    RowDivider()
+                    sliderRow("背景暗化", value: Binding(
+                        get: { settings.backgroundDim },
+                        set: { settings.backgroundDim = $0 }
+                    ), in: 0...0.45)
                 }
             }
-            SettingsGroup(title: "休息遮罩") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("背景样式").foregroundStyle(.secondary)
+            SettingsGroup(title: "休息画面") {
+                segmentedRow("背景样式") {
                     Picker("背景样式", selection: $settings.overlayStyle) {
                         ForEach(OverlayStyle.allCases) { Text($0.displayName).tag($0) }
                     }
-                    .pickerStyle(.segmented)
                 }
-                Divider()
-                settingRow(
-                    "在所有显示器显示",
-                    detail: "每块屏幕都会同步显示休息内容",
-                    icon: "rectangle.on.rectangle",
-                    isActive: settings.showOnAllDisplays
-                ) {
+                RowDivider()
+                SettingsRow(title: "在所有显示器显示", detail: "每块屏幕都会同步显示休息内容") {
                     Toggle("", isOn: $settings.showOnAllDisplays).labelsHidden()
                 }
-                Divider()
-                settingRow(
-                    "显示跳过按钮",
-                    detail: "允许提前结束当前休息",
-                    icon: "forward.end",
-                    isActive: settings.showSkipButton
-                ) {
+                RowDivider()
+                SettingsRow(title: "显示跳过按钮", detail: "允许提前结束当前休息") {
                     Toggle("", isOn: $settings.showSkipButton).labelsHidden()
                 }
-                Divider()
-                settingRow(
-                    "柔和进入与退出",
-                    detail: "休息遮罩会平滑淡入和淡出",
-                    icon: "circle.lefthalf.filled",
-                    isActive: settings.fadeInOverlay
-                ) {
+                RowDivider()
+                SettingsRow(title: "柔和进入与退出", detail: "休息画面会平滑淡入和淡出") {
                     Toggle("", isOn: $settings.fadeInOverlay).labelsHidden()
                 }
-                Divider()
-                settingRow(
-                    "显示倒计时",
-                    detail: "关闭后只展示休息内容",
-                    icon: "clock",
-                    isActive: settings.showCountdown
-                ) {
+                RowDivider()
+                SettingsRow(title: "显示倒计时", detail: "关闭后只展示休息内容") {
                     Toggle("", isOn: $settings.showCountdown).labelsHidden()
                 }
-                Divider()
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack { Text("遮罩强度"); Spacer(); Text("\(Int(settings.overlayOpacity * 100))%").foregroundStyle(.secondary) }
-                    Slider(value: $settings.overlayOpacity, in: 0.55...0.98)
+                RowDivider()
+                sliderRow("色彩浓度", value: $settings.overlayOpacity, in: 0.55...0.98)
+                RowDivider()
+                sliderRow("文字大小", value: $settings.textScale, in: 0.75...1.35)
+                RowDivider()
+                sliderRow("图片大小", value: $settings.imageScale, in: 0.6...1.4)
+                RowDivider()
+                SettingsRow(title: "看看效果") {
+                    softButton("预览") { onPreview(.eye, settings) }
                 }
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack { Text("文字大小"); Spacer(); Text("\(Int(settings.textScale * 100))%").foregroundStyle(.secondary) }
-                    Slider(value: $settings.textScale, in: 0.75...1.35)
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack { Text("图片大小"); Spacer(); Text("\(Int(settings.imageScale * 100))%").foregroundStyle(.secondary) }
-                    Slider(value: $settings.imageScale, in: 0.6...1.4)
-                }
-                HStack { Spacer(); Button("预览遮罩") { onPreview(.eye, settings) } }
             }
-            SettingsGroup(
-                title: "菜单栏与声音",
-                state: settings.showTimeInMenuBar || settings.playSoundWhenBreakEnds ? .active : .inactive
-            ) {
-                settingRow(
-                    "显示剩余时间",
-                    detail: "在菜单栏图标旁显示倒计时",
-                    icon: "menubar.rectangle",
-                    isActive: settings.showTimeInMenuBar
-                ) {
+            SettingsGroup(title: "菜单栏与声音") {
+                SettingsRow(title: "显示剩余时间", detail: "在菜单栏图标旁显示倒计时") {
                     Toggle("", isOn: $settings.showTimeInMenuBar).labelsHidden()
                 }
-                Divider()
-                settingRow(
-                    "休息结束播放声音",
-                    detail: "使用 macOS 内置提示音",
-                    icon: "speaker.wave.2",
-                    isActive: settings.playSoundWhenBreakEnds
-                ) {
+                RowDivider()
+                SettingsRow(title: "休息结束播放声音", detail: "使用 macOS 内置提示音") {
                     Toggle("", isOn: $settings.playSoundWhenBreakEnds).labelsHidden()
                 }
                 if settings.playSoundWhenBreakEnds {
-                    Divider()
-                    HStack {
-                        Picker("提示音", selection: $settings.endSoundName) {
-                            ForEach(["Glass", "Hero", "Ping", "Pop", "Purr", "Submarine"], id: \.self) { Text($0).tag($0) }
+                    RowDivider()
+                    SettingsRow(title: "提示音") {
+                        HStack(spacing: 8) {
+                            Picker("提示音", selection: $settings.endSoundName) {
+                                ForEach(["Glass", "Hero", "Ping", "Pop", "Purr", "Submarine"], id: \.self) { Text($0).tag($0) }
+                            }
+                            .labelsHidden()
+                            .controlSize(.regular)
+                            .frame(width: 120)
+                            softButton("试听") { NSSound(named: NSSound.Name(settings.endSoundName))?.play() }
                         }
-                        Spacer()
-                        Button("试听") { NSSound(named: NSSound.Name(settings.endSoundName))?.play() }
                     }
                 }
             }
         }
     }
 
+    private var backgroundFooter: String? {
+        switch settings.backgroundMode {
+        case .none: return nil
+        case .fixed: return "每块显示器会按自身比例独立裁切，不会拉伸图片。"
+        case .random: return "每次休息会从内置背景和自定义背景中随机选择。"
+        }
+    }
+
+    private func segmentedRow<P: View>(_ title: String, @ViewBuilder picker: () -> P) -> some View {
+        SettingsRow(title: title) {
+            picker()
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.regular)
+                .frame(width: 270)
+        }
+    }
+
+    private func sliderRow(_ title: String, value: Binding<Double>, in range: ClosedRange<Double>) -> some View {
+        SettingsRow(title: title) {
+            HStack(spacing: 10) {
+                Slider(value: value, in: range)
+                    .frame(width: 190)
+                    .accessibilityLabel(title)
+                Text("\(Int((value.wrappedValue * 100).rounded()))%")
+                    .font(.system(size: 12.5))
+                    .monospacedDigit()
+                    .foregroundStyle(RestPilotTheme.inkSecondary)
+                    .frame(width: 38, alignment: .trailing)
+            }
+        }
+    }
+
     private func backgroundTile(title: String, path: String?, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 6) {
                 Group {
                     if let path, let image = NSImage(contentsOfFile: path) {
                         Image(nsImage: image).resizable().scaledToFill()
                     } else {
                         LinearGradient(
                             colors: [
-                                Color(red: 0.975, green: 0.969, blue: 0.949),
-                                Color(red: 0.925, green: 0.936, blue: 0.943)
+                                Color(red: 1.0, green: 0.90, blue: 0.82),
+                                Color(red: 0.87, green: 0.91, blue: 0.86)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: 82, maxHeight: 82)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                Text(title).font(.caption.weight(.medium)).lineLimit(1)
+                .frame(maxWidth: .infinity, minHeight: 74, maxHeight: 74)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(selected ? RestPilotTheme.active : RestPilotTheme.hairline, lineWidth: selected ? 2 : 1)
+                )
+                Text(title)
+                    .font(.system(size: 11.5, weight: selected ? .medium : .regular))
+                    .foregroundStyle(selected ? RestPilotTheme.ink : RestPilotTheme.inkSecondary)
+                    .lineLimit(1)
             }
-            .padding(8)
-            .background(selected ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? Color.accentColor.opacity(0.72) : Color(nsColor: .separatorColor).opacity(0.30), lineWidth: selected ? 1.5 : 1))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func chooseBackground() {
@@ -590,27 +625,6 @@ struct PreferencesView: View {
         settings.customBackgroundPath = path
         settings.selectedBackgroundID = "custom"
         settings.backgroundMode = .fixed
-    }
-
-    private func settingRow<Accessory: View>(
-        _ title: String,
-        detail: String,
-        icon: String,
-        isActive: Bool,
-        @ViewBuilder accessory: () -> Accessory
-    ) -> some View {
-        HStack(spacing: 12) {
-            SettingsStatusIcon(
-                systemImage: icon,
-                state: isActive ? .active : .inactive
-            )
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            accessory()
-        }
     }
 
     private func updateLaunchAtLogin(_ enabled: Bool) {
@@ -637,12 +651,6 @@ struct PreferencesView: View {
     private func chooseImage(binding: Binding<[BreakContent]>, index: Int) {
         guard let path = ContentFileStore.chooseAndCopyImage() else { return }
         binding.wrappedValue[index].imagePath = path
-    }
-
-    private func move(binding: Binding<[BreakContent]>, from index: Int, offset: Int) {
-        let destination = index + offset
-        guard binding.wrappedValue.indices.contains(destination) else { return }
-        binding.wrappedValue.swapAt(index, destination)
     }
 
     private var selectedContent: BreakContent {
@@ -720,55 +728,52 @@ private struct InlineBreakPreview: View {
         ZStack {
             OverlayBackground(settings: settings, backgroundPath: backgroundPath)
             BreakPresentationLayout {
-                VStack(spacing: 13) {
-                    Text(kind.displayName)
-                        .font(.system(size: 13, weight: .semibold))
-                        .tracking(2.4)
-                        .opacity(0.82)
+                VStack(spacing: 0) {
+                    BreakKindChip(title: kind.displayName, usesLightText: usesLightText, scale: 0.85)
                     Text(content.text)
-                        .font(.system(size: 24 * settings.textScale, weight: .medium))
+                        .font(.system(size: 22 * settings.textScale, weight: .semibold))
                         .multilineTextAlignment(.center)
+                        .shadow(color: .black.opacity(backgroundPath != nil ? 0.28 : 0), radius: 10, y: 2)
+                        .padding(.top, 14)
                     if settings.showCountdown {
-                        Text(formattedCountdown(settings.duration(for: kind)))
-                            .font(.system(size: 22 * settings.textScale, weight: .medium, design: .monospaced))
-                            .monospacedDigit()
-                            .opacity(0.86)
+                        CountdownPill(
+                            time: formattedCountdown(settings.duration(for: kind)),
+                            progress: 0.7,
+                            usesLightText: usesLightText,
+                            scale: 0.7 * settings.textScale
+                        )
+                        .padding(.top, 18)
                     }
                     if let path = content.imagePath, let image = NSImage(contentsOfFile: path) {
                         Image(nsImage: image).resizable().scaledToFit()
                             .frame(maxWidth: 200 * settings.imageScale, maxHeight: 80 * settings.imageScale)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .padding(.top, 14)
                     }
                 }
                 .padding(.horizontal, 24)
                 .frame(maxWidth: .infinity)
-                .shadow(color: .black.opacity(usesLightText ? 0.18 : 0), radius: 10, y: 2)
 
                 ViewThatFits(in: .horizontal) {
-                    previewActions(
-                        usesLightText: usesLightText,
-                        stacksVertically: false
-                    )
-                    previewActions(
-                        usesLightText: usesLightText,
-                        stacksVertically: true
-                    )
+                    previewActions(usesLightText: usesLightText, stacksVertically: false)
+                    previewActions(usesLightText: usesLightText, stacksVertically: true)
                 }
                 .allowsHitTesting(false)
             }
             .padding(.horizontal, 20)
         }
-        .frame(maxWidth: .infinity, minHeight: 360)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .frame(maxWidth: .infinity)
+        .frame(height: 340)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(RestPilotTheme.hairline, lineWidth: 1)
+        )
         .foregroundStyle(
             usesLightText
-                ? Color.white.opacity(0.94)
-                : Color(red: 0.16, green: 0.17, blue: 0.18)
+                ? Color.white.opacity(0.95)
+                : RestPilotTheme.overlayInk
         )
-    }
-
-    private var previewSkipAction: (() -> Void)? {
-        guard settings.showSkipButton else { return nil }
-        return {}
     }
 
     private func previewActions(
@@ -779,9 +784,8 @@ private struct InlineBreakPreview: View {
             usesLightText: usesLightText,
             controlSize: .compact,
             snoozeAction: {},
-            secondaryTitle: settings.showSkipButton ? "跳过这次休息" : nil,
-            secondarySystemImage: settings.showSkipButton ? "forward.end" : nil,
-            secondaryAction: previewSkipAction,
+            secondaryTitle: settings.showSkipButton ? "跳过" : nil,
+            secondaryAction: settings.showSkipButton ? {} : nil,
             enablesEscapeShortcut: false,
             stacksVertically: stacksVertically
         )
