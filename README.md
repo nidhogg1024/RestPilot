@@ -51,10 +51,10 @@ zsh scripts/build-icon.sh
 生成 Universal Release 安装包：
 
 ```bash
-zsh scripts/package-release.sh v0.2.0
+zsh scripts/package-release.sh v0.3.0
 ```
 
-产物包含 DMG、App ZIP 和 `SHA256SUMS.txt`，输出到 `outputs/release/v0.2.0/`。
+产物包含 DMG、App ZIP 和 `SHA256SUMS.txt`，输出到 `outputs/release/v0.3.0/`。
 
 ## 持续集成与发布
 
